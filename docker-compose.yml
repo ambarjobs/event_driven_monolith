@@ -1,0 +1,35 @@
+version: "3"
+
+services:
+
+  rabbitmq:
+    container_name: evt-drv-rabbitmq
+    image: rabbitmq:3.12-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - evt-drv-net
+
+  app:
+    container_name: evt-drv-app
+    depends_on:
+      - rabbitmq
+    links:
+      - rabbitmq
+    build:
+      dockerfile: ${PWD}/Dockerfile
+      context: ${PWD}/src
+    command: ["/bin/sh"]
+    stdin_open: true
+    tty: true
+    ports:
+      - "1984:1984"
+    volumes:
+      - ${PWD}/src:/deploy
+    networks:
+      - evt-drv-net
+
+networks:
+  evt-drv-net:
+    driver: bridge
