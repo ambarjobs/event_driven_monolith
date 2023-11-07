@@ -1,0 +1,29 @@
+#! /bin/bash
+
+# Check if it's running inside the container.
+if [[ "$PWD" == "/deploy" ]]
+then
+    echo "Preparing development environment."
+
+    # Installing development requirements.
+    pip install -r requirements-dev.txt
+
+    # Installing text editor.
+    apt install ne --yes
+
+    # Installing less.
+    apt install less --yes
+
+    # Setting root environment
+    echo 'alias el="ls -lh"' >> /root/.bashrc
+    echo 'export EDITOR=/usr/bin/ne' >> /root/.bashrc
+
+    echo
+    echo "Development environment prepared."
+    echo
+    echo "Type:  source ~/.bashrc"
+    echo "to get the alias."
+
+else
+    echo "This script must be run only inside a docker container."
+fi
