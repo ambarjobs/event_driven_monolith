@@ -1,5 +1,7 @@
 SHELL=/bin/bash
 
+include .env
+
 all:
 	@echo "Try 'make help'"
 
@@ -62,3 +64,8 @@ restart: ## Restart all containers
 	@docker-compose restart
 
 .DEFAULT_GOAL := help
+
+# --------------------------------------------------------------------------------------------------
+.PHONY: inside-db
+inside-db: ## Reach OS shell inside CouchDB container.
+	@docker-compose exec -it couchdb /bin/bash

@@ -2,6 +2,18 @@ version: "3"
 
 services:
 
+  couchdb:
+    container_name: evt-drv-couchdb
+    image: couchdb:3.3
+    restart: always
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+    ports:
+      - "5984:5984"
+    networks:
+      - evt-drv-net
+
   rabbitmq:
     container_name: evt-drv-rabbitmq
     image: rabbitmq:3.12-management
@@ -15,11 +27,18 @@ services:
     container_name: evt-drv-app
     depends_on:
       - rabbitmq
+      - couchdb
     links:
       - rabbitmq
+      - couchdb:db
     build:
       dockerfile: ${PWD}/Dockerfile
       context: ${PWD}/src
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+      - COUCHDB_APP_USER=${COUCHDB_APP_USER}
+      - COUCHDB_APP_PASSWORD=${COUCHDB_APP_PASSWORD}
     command: ["/bin/sh"]
     stdin_open: true
     tty: true
