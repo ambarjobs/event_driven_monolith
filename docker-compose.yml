@@ -1,14 +1,18 @@
-version: "3"
+version: "3.5"
 
 services:
 
   couchdb:
     container_name: evt-drv-couchdb
-    image: couchdb:3.3
     restart: always
     environment:
       - COUCHDB_USER=${COUCHDB_USER}
       - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+      - COUCHDB_APP_USER=${COUCHDB_APP_USER}
+      - COUCHDB_APP_PASSWORD=${COUCHDB_APP_PASSWORD}
+    build:
+      context: .
+      dockerfile: ${PWD}/dockerfiles/CouchDBDockerfile
     ports:
       - "5984:5984"
     networks:
@@ -30,9 +34,9 @@ services:
       - couchdb
     links:
       - rabbitmq
-      - couchdb:db
+      - couchdb
     build:
-      dockerfile: ${PWD}/Dockerfile
+      dockerfile: ${PWD}/dockerfiles/AppDockerfile
       context: ${PWD}/src
     environment:
       - COUCHDB_USER=${COUCHDB_USER}

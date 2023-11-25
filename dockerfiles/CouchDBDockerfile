@@ -1,0 +1,13 @@
+FROM couchdb:3.3
+
+WORKDIR /deploy
+
+COPY ./couchdb_files/init_couchdb /deploy
+
+# Update image packages.
+RUN apt-get update
+
+# Creating and setting a locale file.
+RUN apt-get install -y locales
+RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+RUN locale-gen en_US.UTF-8
