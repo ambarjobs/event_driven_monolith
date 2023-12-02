@@ -1,5 +1,8 @@
 FROM python:3.11.6-slim-bullseye
 
+# Expose uvicorn port
+EXPOSE 80
+
 # Expose Pudb (debugger) port
 EXPOSE 1984
 
@@ -23,3 +26,6 @@ RUN python3 -m pip install --upgrade pip
 
 # Install requirements (you can install manually requirements-dev.txt in your local environment).
 RUN pip3 install -r requirements.txt
+
+# Starts FastAPI server.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80", "--reload"]

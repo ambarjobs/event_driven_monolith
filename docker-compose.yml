@@ -43,11 +43,9 @@ services:
       - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
       - COUCHDB_APP_USER=${COUCHDB_APP_USER}
       - COUCHDB_APP_PASSWORD=${COUCHDB_APP_PASSWORD}
-    command: ["/bin/sh"]
-    stdin_open: true
-    tty: true
     ports:
       - "1984:1984"
+      - "80:80"
     volumes:
       - ${PWD}/src:/deploy
     networks:
