@@ -1,10 +1,10 @@
-from typing import Any
 import httpx
 from fastapi import FastAPI, status
-# from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse
 
 import schemas as sch
 import services as srv
+import utils
 from database import DatabaseInfo, db, Index
 
 
@@ -17,7 +17,7 @@ APP_DATABASES_INFO = [
 ]
 
 try:
-    db.init_tables(database_names=[info.name for info in APP_DATABASES_INFO])
+    db.init_databases(database_names=[info.name for info in APP_DATABASES_INFO])
     for db_info in APP_DATABASES_INFO:
         db.create_database_indexes(database_info=db_info)
 except httpx.HTTPError as exc:
@@ -34,13 +34,22 @@ app = FastAPI()
 #  Sign in
 # ==================================================================================================
 
-@app.post('/signin', status_code=status.HTTP_201_CREATED)
+@app.post('/signin')
 def signin(
     credentials: sch.UserCredentials,
     user_info: sch.UserInfo
-) -> dict[str, Any]:
+) -> JSONResponse:
     """Sign in endpoint."""
-    return srv.user_sign_in(credentials=credentials, user_info=user_info)
+    result = srv.user_sign_in(credentials=credentials, user_info=user_info)
+    result_status = utils.deep_traversal(result,'status')
+    if result_status == 'already_signed_in':
+        return JSONResponse(content=result, status_code=status.HTTP_409_CONFLICT)
+    if result_status == 'error':
+        return JSONResponse(
+            content=result,
+            status_code=utils.deep_traversal(result,'detail', 'status_code')
+        )
+    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
 # @app.post('/stores/add', status_code=status.HTTP_201_CREATED)
 # def add_store(store: srlz.StoreIn):

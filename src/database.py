@@ -6,6 +6,7 @@ import os
 from typing import NamedTuple
 
 import httpx
+from fastapi import status
 
 import config
 import schemas as sch
@@ -34,7 +35,7 @@ class CouchDb:
     """Class representing CouchDb."""
 
     def __init__(self) -> None:
-        self.url = config.db_url
+        self.url = config.DB_URL
         self.admin_credentials = self._get_credentials(
             user_env_var='COUCHDB_USER',
             pwd_env_var='COUCHDB_PASSWORD'
@@ -58,7 +59,7 @@ class CouchDb:
         response = httpx.put(url=command_url, auth=self.admin_credentials)
         # If a database already exists it'll generate a `status_code` of 412, but that isn't
         # significative here because we'll ignore existing databases.
-        if response.status_code != 412:
+        if response.status_code != status.HTTP_412_PRECONDITION_FAILED:
             response.raise_for_status()
 
     def set_app_permissions_on_database(self, database_name: str) -> None:
@@ -78,8 +79,8 @@ class CouchDb:
             json=BODY,
         ).raise_for_status()
 
-    def init_tables(self, database_names: list[str]) -> None:
-        """Create database tables if not created."""
+    def init_databases(self, database_names: list[str]) -> None:
+        """Create databases if not created."""
         for database_name in database_names:
             self.create_database(database_name=database_name)
             self.set_app_permissions_on_database(database_name=database_name)
@@ -101,21 +102,32 @@ class CouchDb:
                 json=body,
             ).raise_for_status()
 
-    def check_document_available(self, database_name: str, docuement_id: str) -> str:
+    def check_document_available(self, database_name: str, docuement_id: str) -> str | None:
         """Checks if document exists on database."""
         command_url = f'{self.url}/{database_name}/{docuement_id}'
-        response = httpx.head(url=command_url, auth=self.app_credentials).raise_for_status()
-        version = response.headers.get('etag')
-        if version:
-            version = version.strip('"')
-        return version
+        try:
+            response = httpx.head(url=command_url, auth=self.app_credentials).raise_for_status()
+            version = response.headers.get('etag')
+            if version:
+                version = version.strip('"')
+            return version
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code == status.HTTP_404_NOT_FOUND:
+                # Oh, mypy! Why can't you see that a `return` without argument returns `None`?
+                return None
+            raise
 
-    def sign_in_user(self, id: str, hash_: str, user_info: sch.UserInfo) -> None:
+    def sign_in_user(
+        self,
+        id: str,
+        hash_: str,
+        user_info: sch.UserInfo,
+    ) -> None:
         """Sign in the user."""
-        command_url = f'{self.url}/user-credentials/{id}'
+        command_url = f'{self.url}/{config.USER_CREDENTIALS_DB_NAME}/{id}'
         body = {'hash': hash_}
         httpx.put(url=command_url, json=body, auth=self.app_credentials).raise_for_status()
-        command_url = f'{self.url}/user-info/{id}'
+        command_url = f'{self.url}/{config.USER_INFO_DB_NAME}/{id}'
         body = utils.clear_nulls(user_info.model_dump(exclude={'id'}))
         httpx.put(url=command_url, json=body, auth=self.app_credentials).raise_for_status()
 

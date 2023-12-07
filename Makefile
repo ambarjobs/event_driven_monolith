@@ -96,9 +96,35 @@ inside: ## Reach OS shell inside app container.
 	@docker-compose exec -it app /bin/bash
 
 # --------------------------------------------------------------------------------------------------
-.PHONY: _find_and_delete_pyc
-_find_and_delete_pyc: # Remove Python cache files
+.PHONY: shell
+shell: ## Python shell inside app container.
+	@docker-compose exec -it app /usr/local/bin/bpython
+
+# --------------------------------------------------------------------------------------------------
+.PHONY: prep-dev
+prep-dev: ## Prepare inside environment for development.
+	@docker-compose exec -it app /deploy/prep_dev
+
+# --------------------------------------------------------------------------------------------------
+.PHONY: delete_bytecode
+delete_bytecode: # Remove Python bytecode compiled files
 	@docker-compose exec app find . -name "*.pyc" -delete
+	@docker-compose exec app find . -name "__pycache__" -delete
+
+# --------------------------------------------------------------------------------------------------
+.PHONY: test file class test_name module
+test: # Execute test suite, optionally restricted to a `file`, `class`, `test_name` or `module`.
+ifdef module
+	@docker-compose exec app pytest -k ${module}
+else ifdef test_name
+	@docker-compose exec app pytest tests/${file}::${class}::${test_name}
+else ifdef class
+	@docker-compose exec app pytest tests/${file}::${class}
+else ifdef file
+	@docker-compose exec app pytest tests/${file}
+else
+	@docker-compose exec app pytest
+endif
 
 # ==================================================================================================
 #  CouchDB commands
