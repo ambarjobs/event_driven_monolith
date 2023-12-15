@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 
 import utils
-from database import db, DbCredentials
+from database import db, DbCredentials, Index
 
 
 # --------------------------------------------------------------------------------------------------
@@ -30,6 +30,7 @@ def access_database(
     )
     response = access_function(**params)
     return response.json()
+
 
 class Db:
     """Database access helper class to be used by `TestDb` fixture factory."""
@@ -72,36 +73,57 @@ class Db:
         )
         return response
 
+    def create_indexes(self, indexes: list[Index]) -> None:
+        """Create database indexes."""
+        for index in indexes:
+            body = {
+                "index": {
+                    "fields": index.fields
+                },
+                "ddoc": index.name,
+                "type": "json"
+            }
+            access_database(
+                access_function=httpx.post,
+                url_parts=[self.database_name, '_index'],
+                credentials=db.app_credentials,
+                body=body,
+            )
+
     def check_document(self, document_id: str) -> bool:
         """Check if document exists on database."""
         command_url = f'{self.database_name}/{document_id}'
         response = httpx.head(url=command_url, auth=db.app_credentials)
         return bool(response.headers.get('etag'))
 
-    def get_document_by_id(self, document_id: str, fields: list[str] | None = None) -> Any:
-        """Get a document from the database by it's `id`."""
-        match fields:
-            case None | []:
-                fields = ['_id']
-            case ['_id', *_]:
-                ...
-            case _:
-                fields.append('_id')
-
-        body = {
-            "selector": {
-                "_id": {"$eq": document_id}
-            },
-            "fields": fields
-        }
-
+    def get_document_by_id(self, document_id: str) -> Any:
+        """Get a document from the database by `id`."""
         response = access_database(
-            access_function=httpx.post,
-            url_parts=[self.database_name, '_find'],
+            access_function=httpx.get,
+            url_parts=[self.database_name, document_id],
             credentials=db.app_credentials,
-            body=body,
         )
         return response
+
+    def update_document(self, document_id: str, update_fields: dict) -> str:
+        """Update document fields."""
+
+        document_data = self.get_document_by_id(document_id=document_id)
+        current_revision = utils.deep_traversal(document_data, '_rev')
+
+        new_fields = {
+            key: value for key, value in (document_data | update_fields).items()
+            if key not in ['_id', '_rev']
+        }
+
+        new_revision = access_database(
+            access_function=httpx.put,
+            url_parts=[self.database_name, document_id],
+            credentials=db.app_credentials,
+            body=new_fields,
+            headers={'if-match': current_revision}
+        )
+        return new_revision
 
     def delete(self) -> None:
         """Delete the database."""

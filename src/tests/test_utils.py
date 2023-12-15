@@ -1,11 +1,10 @@
 # ==================================================================================================
 #  Utils module tests
 # ==================================================================================================
-
-from typing import Any
-
 import bcrypt
+import config
 import pytest
+from jose import ExpiredSignatureError, jwt, JWTError
 from pydantic import SecretStr
 
 import utils
@@ -14,12 +13,12 @@ class TestUtils:
     # ----------------------------------------------------------------------------------------------
     #   clear_nulls() function
     # ----------------------------------------------------------------------------------------------
-    def test_clear_nulls__general_case(self, general_data: dict[Any, Any]) -> None:
+    def test_clear_nulls__general_case(self, general_data: dict) -> None:
         expected_data = {'some_key': 'some_value', 'yet_another_key': 123}
 
         assert utils.clear_nulls(general_data) == expected_data
 
-    def test_clear_nulls__only_null_values(self, general_data: dict[Any, Any]) -> None:
+    def test_clear_nulls__only_null_values(self, general_data: dict) -> None:
         general_data['some_key'] = None
         general_data['yet_another_key'] = None
 
@@ -33,7 +32,7 @@ class TestUtils:
 
         assert utils.clear_nulls(general_data) == expected_data
 
-    def test_clear_nulls__no_null_values(self, general_data: dict[Any, Any]) -> None:
+    def test_clear_nulls__no_null_values(self, general_data: dict) -> None:
         general_data['another_key'] = 234.5
         general_data[321] = ''
         expected_data = general_data
@@ -84,6 +83,86 @@ class TestUtils:
         assert utils.check_password(password=password, hash_value=hash_value)
 
     # ----------------------------------------------------------------------------------------------
+    #   create_token() function
+    # ----------------------------------------------------------------------------------------------
+    def test_create_token__general_case(self) -> None:
+        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+
+        token = utils.create_token(payload=test_payload, expiration_hours=1.0)
+
+        token_payload = jwt.decode(
+            token,
+            key=config.ACCESS_TOKEN_SECRET_KEY,
+            algorithms=[config.TOKEN_ALGORITHM]
+        )
+
+        assert utils.deep_traversal(token_payload, 'sub') == 'test_subject'
+        assert utils.deep_traversal(token_payload, 'field1') == 'value1'
+        assert utils.deep_traversal(token_payload, 'field2') == 'value2'
+
+    def test_create_token__expired_token(self) -> None:
+        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+
+        # token expired one hour ago.
+        token = utils.create_token(payload=test_payload, expiration_hours=-1.0)
+
+        with pytest.raises(ExpiredSignatureError):
+            jwt.decode(
+                token,
+                key=config.ACCESS_TOKEN_SECRET_KEY,
+                algorithms=[config.TOKEN_ALGORITHM]
+            )
+
+    def test_create_token__invalid_token(self) -> None:
+        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+
+        # Invalid or corrupted token.
+        token = (
+            utils.create_token(payload=test_payload, expiration_hours=1.0) + 'invalid'
+        )
+
+        with pytest.raises(JWTError):
+            jwt.decode(
+                token,
+                key=config.ACCESS_TOKEN_SECRET_KEY,
+                algorithms=[config.TOKEN_ALGORITHM]
+            )
+
+    # ----------------------------------------------------------------------------------------------
+    #   get_token_payload() function
+    # ----------------------------------------------------------------------------------------------
+    def test_get_token_payload__general_case(self) -> None:
+        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+
+        token = utils.create_token(payload=test_payload, expiration_hours=1.0)
+
+        token_payload = utils.get_token_payload(token=token)
+
+        assert utils.deep_traversal(token_payload, 'sub') == 'test_subject'
+        assert utils.deep_traversal(token_payload, 'field1') == 'value1'
+        assert utils.deep_traversal(token_payload, 'field2') == 'value2'
+
+    def test_get_token_payload__expired_token(self) -> None:
+        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+
+        # token expired one hour ago.
+        token = utils.create_token(payload=test_payload, expiration_hours=-1.0)
+
+        with pytest.raises(ExpiredSignatureError):
+            utils.get_token_payload(token=token)
+
+    def test_get_token_payload__invalid_token(self) -> None:
+        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+
+        # Invalid or corrupted token.
+        token = (
+            utils.create_token(payload=test_payload, expiration_hours=1.0) + 'invalid'
+        )
+
+        with pytest.raises(JWTError):
+            utils.get_token_payload(token=token)
+
+    # ----------------------------------------------------------------------------------------------
     #   deep_traversal() function
     # ----------------------------------------------------------------------------------------------
     def test_deep_traversal__general_case(self, json_data) -> None:
@@ -96,6 +175,8 @@ class TestUtils:
         assert utils.deep_traversal(json_data, 'field3', 'f3_1', 0, 'field3_1_0') == 'value3_1_0'
         assert utils.deep_traversal(json_data, 'field3', 'f3_1', 1, 'field3_1_1b') == 'value3_1_1b'
         assert utils.deep_traversal(json_data, 'field4') is None
+        assert utils.deep_traversal(json_data, 'field5') == 0.0
+        assert utils.deep_traversal(json_data, 'field6') is False
 
     def test_deep_traversal__inexistent_data(self, json_data) -> None:
         assert utils.deep_traversal(json_data, 0) is None
@@ -117,7 +198,7 @@ class TestUtils:
         assert utils.deep_traversal(json_data, 'field3', 'f3_1', 1, 'value3_1_1zzz') is None
 
     def test_deep_traversal__empty_data(self) -> None:
-        json_data: dict[Any, Any] = dict()
+        json_data: dict = dict()
 
         assert utils.deep_traversal(json_data, 0) is None
         assert utils.deep_traversal(json_data, 'any_field') is None

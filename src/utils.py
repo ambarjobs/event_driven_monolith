@@ -1,21 +1,25 @@
 # ==================================================================================================
 #  Application utility functions
 # ==================================================================================================
-
 from copy import deepcopy
+from datetime import datetime, timedelta, UTC
 from functools import reduce
 from typing import Any, Generator, Sequence
 
 import bcrypt
+from jose import jwt
 from pydantic import SecretStr
+
+import config
 
 
 # --------------------------------------------------------------------------------------------------
 #   Json data manipulation
 # --------------------------------------------------------------------------------------------------
-def clear_nulls(data: dict[str, Any]) -> dict[Any, Any]:
+def clear_nulls(data: dict[str, Any]) -> dict:
     """Return data removing fields with value `None`."""
     return {key: value for key, value in data.items() if value is not None}
+
 
 # --------------------------------------------------------------------------------------------------
 #   Hashing
@@ -32,6 +36,33 @@ def check_password(password: SecretStr, hash_value: str) -> bool:
         password=password.get_secret_value().encode('utf-8'),
         hashed_password=bytes.fromhex(hash_value),
     )
+
+
+# --------------------------------------------------------------------------------------------------
+#   Tokens
+# --------------------------------------------------------------------------------------------------
+def create_token(
+    payload: dict | None = None,
+    expiration_hours = float(config.TOKEN_DEFAULT_EXPIRATION_HOURS)
+) -> str:
+    """Create a signed JWT."""
+    payload = payload or {}
+    this_moment = datetime.now(tz=UTC)
+    token_expiration = this_moment + timedelta(hours=expiration_hours)
+    return jwt.encode(
+        claims=payload | {'exp': token_expiration},
+        key=config.ACCESS_TOKEN_SECRET_KEY,
+        algorithm=config.TOKEN_ALGORITHM
+    )
+
+def get_token_payload(token: str) -> dict:
+    """Get token payload if it is valid and not expired."""
+    return jwt.decode(
+        token=token,
+        key=config.ACCESS_TOKEN_SECRET_KEY,
+        algorithms=[config.TOKEN_ALGORITHM]
+    )
+
 
 # --------------------------------------------------------------------------------------------------
 #   JSON traversal
@@ -55,6 +86,8 @@ def deep_traversal(obj, *keys):
         keys,
         deepcopy(obj)
     )
+    if result is False or result == 0:
+        return result
     return result or None
 
 

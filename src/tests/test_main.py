@@ -2,6 +2,7 @@
 #  Main module tests
 # ==================================================================================================
 from typing import Type
+from datetime import datetime, timedelta, UTC
 
 import bcrypt
 import pytest
@@ -14,6 +15,9 @@ import utils
 from tests.helpers import Db
 from main import app
 
+
+TEST_EXECUTION_LIMIT = 15
+
 config.USER_CREDENTIALS_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_CREDENTIALS_DB_NAME}'
 config.USER_INFO_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_INFO_DB_NAME}'
 
@@ -21,6 +25,9 @@ client = TestClient(app=app)
 
 
 class TestMain:
+    # ==============================================================================================
+    #   /signin endpoint test
+    # ==============================================================================================
     def test_signin__general_case(
         self,
         TestDb: Type[Db],
@@ -53,25 +60,25 @@ class TestMain:
             response = client.post('/signin', json=body)
 
             assert response.status_code == status.HTTP_201_CREATED
-            assert response.json() == {'status': 'signed_in'}
+            assert response.json() == {
+                'status': 'successful_sign_in',
+                'error': False,
+                'details': {
+                    'description': 'User signed in successfully.'
+                }
+            }
 
-            credentials_response = credentials_db.get_document_by_id(
+            credentials_doc = credentials_db.get_document_by_id(
                 document_id=user_credentials.id,
-                fields=['_id', '_rev', 'hash'],
             )
-
-            credentials_doc =  utils.deep_traversal(credentials_response, 'docs', 0)
 
             assert credentials_doc is not None
             assert credentials_doc.get('_id') == user_credentials.id
             assert credentials_doc.get('hash') == known_hash
 
-            info_response = info_db.get_document_by_id(
+            info_doc = info_db.get_document_by_id(
                 document_id=user_info.id,
-                fields=['_id', '_rev', 'name', 'phone_number', 'address'],
             )
-
-            info_doc =  utils.deep_traversal(info_response, 'docs', 0)
 
             assert info_doc is not None
             assert info_doc.get('_id') == user_info.id
@@ -116,15 +123,19 @@ class TestMain:
             # Try to sign in a pre existent user.
             response = client.post('/signin', json=body)
 
-            credentials_response = credentials_db.get_document_by_id(
+            credentials_doc = credentials_db.get_document_by_id(
                 document_id=user_credentials.id,
-                fields=['_id', '_rev', 'hash'],
             )
-            credentials_doc =  utils.deep_traversal(credentials_response, 'docs', 0)
 
             expected_result = {
-                'status': 'already_signed_in',
-                'version': credentials_doc['_rev']
+                'status': 'user_already_signed_in',
+                'error': True,
+                'details': {
+                    'description': 'User already signed in.',
+                    'data': {
+                        'version': credentials_doc['_rev']
+                    }
+                }
             }
 
             assert response.status_code == status.HTTP_409_CONFLICT
@@ -132,3 +143,310 @@ class TestMain:
         finally:
             credentials_db.delete()
             info_db.delete()
+
+    # ==============================================================================================
+    #   /login endpoint test
+    # ==============================================================================================
+    def test_login__general_case(
+        self,
+        TestDb: Type[Db],
+        user_credentials: sch.UserCredentials,
+        this_moment: datetime,
+    ) -> None:
+        credentials_db = TestDb(database_name=config.USER_CREDENTIALS_DB_NAME)
+
+        try:
+            credentials_db.create()
+            credentials_db.add_permissions()
+
+            sign_in_hash = utils.calc_hash(password=user_credentials.password)
+            sign_in_body = {
+                'hash': sign_in_hash,
+                'validated': True
+            }
+            # Minimal sign in.
+            credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+
+            login_body = {
+                'username': user_credentials.id,
+                'password': user_credentials.password.get_secret_value()
+            }
+
+            response = client.post('/login', data=login_body)
+            assert response.status_code == status.HTTP_200_OK
+
+            login_status = sch.ServiceStatus(**response.json())
+
+            assert login_status.status == 'successfully_logged_in'
+            assert login_status.error is False
+            assert login_status.details.description == 'User has successfully logged in.'
+            assert 'token' in login_status.details.data
+            assert len(login_status.details.data['token']) > 0
+
+            db_user_credentials = credentials_db.get_document_by_id(
+                document_id=user_credentials.id,
+            )
+
+            assert db_user_credentials.get('_id') == user_credentials.id
+
+            last_login_iso = db_user_credentials.get('last_login')
+            assert last_login_iso is not None
+            assert (
+                this_moment - datetime.fromisoformat(last_login_iso) <
+                timedelta(seconds=TEST_EXECUTION_LIMIT)
+            )
+        finally:
+            credentials_db.delete()
+
+    def test_login__inexistent_user(
+        self,
+        TestDb: Type[Db],
+        user_credentials: sch.UserCredentials
+    ) -> None:
+        credentials_db = TestDb(database_name=config.USER_CREDENTIALS_DB_NAME)
+
+        try:
+            credentials_db.create()
+            credentials_db.add_permissions()
+
+            sign_in_hash = utils.calc_hash(password=user_credentials.password)
+            sign_in_body = {
+                'hash': sign_in_hash,
+                'validated': True
+            }
+            # Minimal sign in.
+            credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+
+            login_body = {
+                'username': 'inexistent@user.id',
+                'password': user_credentials.password.get_secret_value()
+            }
+
+            response = client.post('/login', data=login_body)
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+            login_status = sch.ServiceStatus(**response.json())
+
+            assert login_status.status == 'incorrect_login_credentials'
+            assert login_status.error is True
+            assert login_status.details.description == (
+                'Invalid user or password. Check if user has signed in.'
+            )
+            # No token sent (`token` would come inside `data`).
+            assert login_status.details.data is None
+        finally:
+            credentials_db.delete()
+
+    def test_login__incorrect_password(
+        self,
+        TestDb: Type[Db],
+        user_credentials: sch.UserCredentials
+    ) -> None:
+        credentials_db = TestDb(database_name=config.USER_CREDENTIALS_DB_NAME)
+
+        try:
+            credentials_db.create()
+            credentials_db.add_permissions()
+
+            sign_in_hash = utils.calc_hash(password=user_credentials.password)
+            sign_in_body = {
+                'hash': sign_in_hash,
+                'validated': True
+            }
+            # Minimal sign in.
+            credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+
+            login_body = {
+                'username': user_credentials.id,
+                'password': 'incorrect_password'
+            }
+
+            response = client.post('/login', data=login_body)
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+            login_status = sch.ServiceStatus(**response.json())
+
+            assert login_status.status == 'incorrect_login_credentials'
+            assert login_status.error is True
+            assert login_status.details.description == (
+                'Invalid user or password. Check if user has signed in.'
+            )
+            # No token sent (`token` would come inside `data`).
+            assert login_status.details.data is None
+        finally:
+            credentials_db.delete()
+
+    def test_login__user_has_no_hash(
+        self,
+        TestDb: Type[Db],
+        user_credentials: sch.UserCredentials
+    ) -> None:
+        credentials_db = TestDb(database_name=config.USER_CREDENTIALS_DB_NAME)
+
+        try:
+            credentials_db.create()
+            credentials_db.add_permissions()
+
+            sign_in_body = {}
+            # Minimal sign in.
+            credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+
+            login_body = {
+                'username': user_credentials.id,
+                'password': user_credentials.password.get_secret_value()
+            }
+
+            response = client.post('/login', data=login_body)
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+            login_status = sch.ServiceStatus(**response.json())
+
+            assert login_status.status == 'incorrect_login_credentials'
+            assert login_status.error is True
+            assert login_status.details.description == (
+                'Invalid user or password. Check if user has signed in.'
+            )
+            # No token sent (`token` would come inside `data`).
+            assert login_status.details.data is None
+        finally:
+            credentials_db.delete()
+
+    def test_login__no_email_validation(
+        self,
+        TestDb: Type[Db],
+        user_credentials: sch.UserCredentials
+    ) -> None:
+        credentials_db = TestDb(database_name=config.USER_CREDENTIALS_DB_NAME)
+
+        try:
+            credentials_db.create()
+            credentials_db.add_permissions()
+
+            sign_in_hash = utils.calc_hash(password=user_credentials.password)
+            sign_in_body = {
+                'hash': sign_in_hash,
+            }
+            # Minimal sign in.
+            credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+
+            login_body = {
+                'username': user_credentials.id,
+                'password': user_credentials.password.get_secret_value()
+            }
+
+            response = client.post('/login', data=login_body)
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+            login_status = sch.ServiceStatus(**response.json())
+
+            assert login_status.status == 'email_not_validated'
+            assert login_status.error is True
+            assert login_status.details.description == (
+                'User email is not validated.'
+            )
+            # No token sent (`token` would come inside `data`).
+            assert login_status.details.data is None
+        finally:
+            credentials_db.delete()
+
+    def test_login__user_already_logged_in__last_login_not_expired(
+        self,
+        TestDb: Type[Db],
+        user_credentials: sch.UserCredentials,
+        this_moment: datetime,
+    ) -> None:
+        credentials_db = TestDb(database_name=config.USER_CREDENTIALS_DB_NAME)
+
+        try:
+            credentials_db.create()
+            credentials_db.add_permissions()
+
+            sign_in_hash = utils.calc_hash(password=user_credentials.password)
+            sign_in_body = {
+                'hash': sign_in_hash,
+                'validated': True,
+                # Logged in more than TEST_EXECUTION_LIMIT seconds ago.
+                'last_login': datetime.isoformat(
+                    this_moment -
+                    timedelta(seconds=TEST_EXECUTION_LIMIT)
+                )
+            }
+            # Minimal sign in.
+            credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+
+            login_body = {
+                'username': user_credentials.id,
+                'password': user_credentials.password.get_secret_value()
+            }
+
+            response = client.post('/login', data=login_body)
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+            login_status = sch.ServiceStatus(**response.json())
+
+            assert login_status.status == 'user_already_signed_in'
+            assert login_status.error is True
+            assert login_status.details.description == (
+                'User was already logged in.'
+            )
+            # No token sent (`token` would come inside `data`).
+            assert login_status.details.data is None
+        finally:
+            credentials_db.delete()
+
+    def test_login__user_already_logged_in__last_login_expired(
+        self,
+        TestDb: Type[Db],
+        user_credentials: sch.UserCredentials,
+        this_moment: datetime,
+    ) -> None:
+        credentials_db = TestDb(database_name=config.USER_CREDENTIALS_DB_NAME)
+
+        try:
+            credentials_db.create()
+            credentials_db.add_permissions()
+
+            sign_in_hash = utils.calc_hash(password=user_credentials.password)
+            sign_in_body = {
+                'hash': sign_in_hash,
+                'validated': True,
+                # `last_login` expired one hour ago.
+                'last_login': datetime.isoformat(
+                    this_moment -
+                    timedelta(hours=config.TOKEN_DEFAULT_EXPIRATION_HOURS + 1.0)
+                )
+            }
+            # Minimal sign in.
+            credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+
+            login_body = {
+                'username': user_credentials.id,
+                'password': user_credentials.password.get_secret_value()
+            }
+
+            response = client.post('/login', data=login_body)
+            assert response.status_code == status.HTTP_200_OK
+
+            login_status = sch.ServiceStatus(**response.json())
+
+            assert login_status.status == 'successfully_logged_in'
+            assert login_status.error is False
+            assert login_status.details.description == 'User has successfully logged in.'
+            assert 'token' in login_status.details.data
+            assert len(login_status.details.data['token']) > 0
+
+            db_user_credentials = credentials_db.get_document_by_id(
+                document_id=user_credentials.id,
+            )
+
+            assert db_user_credentials.get('_id') == user_credentials.id
+
+            this_moment = datetime.now(tz=UTC)
+            last_login_iso = db_user_credentials.get('last_login')
+            assert last_login_iso is not None
+            assert (
+                this_moment - datetime.fromisoformat(last_login_iso) <
+                timedelta(seconds=TEST_EXECUTION_LIMIT)
+            )
+        finally:
+            credentials_db.delete()

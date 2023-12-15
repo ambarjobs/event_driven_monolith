@@ -3,7 +3,7 @@
 # ==================================================================================================
 
 import os
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import httpx
 from fastapi import status
@@ -102,9 +102,9 @@ class CouchDb:
                 json=body,
             ).raise_for_status()
 
-    def check_document_available(self, database_name: str, docuement_id: str) -> str | None:
+    def check_document_available(self, database_name: str, document_id: str) -> str | None:
         """Checks if document exists on database."""
-        command_url = f'{self.url}/{database_name}/{docuement_id}'
+        command_url = f'{self.url}/{database_name}/{document_id}'
         try:
             response = httpx.head(url=command_url, auth=self.app_credentials).raise_for_status()
             version = response.headers.get('etag')
@@ -116,6 +116,77 @@ class CouchDb:
                 # Oh, mypy! Why can't you see that a `return` without argument returns `None`?
                 return None
             raise
+
+    def get_document_by_id(
+        self,
+        database_name: str,
+        document_id: str,
+    ) -> dict[str, Any]:
+        """Get information about a document by `id`."""
+        response = httpx.get(
+            url=f'{self.url}/{database_name}/{document_id}',
+            auth=self.app_credentials,
+        ).raise_for_status()
+
+        return response.json()
+
+    def get_document_fields_by_id(
+        self,
+        database_name: str,
+        document_id: str,
+        fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Get information about a document by `id` choosing it's `fields`."""
+        fields = fields or []
+        body = {
+            "selector": {
+                "_id": {
+                    "$eq": document_id
+                }
+            },
+            "fields": fields,
+        }
+
+        response = httpx.post(
+            url=f'{self.url}/{database_name}/_find',
+            auth=self.app_credentials,
+            json=body,
+        ).raise_for_status()
+
+        document_info = utils.deep_traversal(response.json(), 'docs', 0)
+        return document_info or {}
+
+    def update_document_fields(self, original_fields: dict, updated_fields: dict) -> dict:
+        """Update document fields with new values, excluding special fields."""
+        SPECIAL_FIELDS = ['_id', '_rev']
+        return {
+            key: value for key, value in (original_fields | updated_fields).items()
+            if key not in SPECIAL_FIELDS
+        }
+
+    def update_document(
+        self,
+        database_name: str,
+        document_id: str,
+        fields_to_change: dict
+    ) -> str:
+        """Update the fields of an existing document."""
+        document_fields = self.get_document_by_id(
+            database_name=database_name,
+            document_id=document_id
+        )
+        revision = utils.deep_traversal(document_fields, '_rev')
+        updated_fields = self.update_document_fields(
+            original_fields=document_fields,
+            updated_fields=fields_to_change
+        )
+        response = httpx.put(
+            url=f'{self.url}/{database_name}/{document_id}',
+            auth=self.app_credentials,
+            json=updated_fields,
+            headers={'if-match': revision}
+        ).raise_for_status()
+        return utils.deep_traversal(response.json(), 'rev')
 
     def sign_in_user(
         self,

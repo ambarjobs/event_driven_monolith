@@ -1,7 +1,8 @@
 # ==================================================================================================
 #  Tests fixtures
 # ==================================================================================================
-from typing import Any, Type
+from typing import Type
+from datetime import datetime, UTC
 
 import pytest
 from pydantic import SecretStr
@@ -42,10 +43,10 @@ def known_empty_hash() -> str:
 
 
 # --------------------------------------------------------------------------------------------------
-#   Utils
+#   General
 # --------------------------------------------------------------------------------------------------
 @pytest.fixture
-def general_data() -> dict[Any, Any]:
+def general_data() -> dict:
     """General data with some keys with `None` values."""
     return {
         'some_key': 'some_value',
@@ -55,7 +56,7 @@ def general_data() -> dict[Any, Any]:
     }
 
 @pytest.fixture
-def json_data() -> dict[Any, Any]:
+def json_data() -> dict:
     """Generic JSON data."""
     return {
         'field0': 'value0',
@@ -78,7 +79,14 @@ def json_data() -> dict[Any, Any]:
             ]
         },
         'field4': None,
+        'field5': 0.0,
+        'field6': False,
     }
+
+@pytest.fixture
+def this_moment() -> datetime:
+    """Provide current datetime with UTC timezone."""
+    return datetime.now(tz=UTC)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -105,3 +113,8 @@ def user_info() -> sch.UserInfo:
         name=f'{config.TEST_PREFIX.title()} User Name',
         address=f'{config.TEST_PREFIX.title()} Streeet, 123'
     )
+
+@pytest.fixture
+def user_id() -> str:
+    """Test user id."""
+    return f'{config.TEST_PREFIX}@user.id'
