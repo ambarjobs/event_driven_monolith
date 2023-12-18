@@ -8,6 +8,7 @@ from jose import ExpiredSignatureError, jwt, JWTError
 from pydantic import SecretStr
 
 import utils
+from exceptions import InvalidAccesTokenKeyError
 
 class TestUtils:
     # ----------------------------------------------------------------------------------------------
@@ -47,7 +48,7 @@ class TestUtils:
         password: SecretStr,
         known_salt: bytes,
         known_hash: str,
-        monkeypatch: pytest.MonkeyPatch
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # We need a known salt to be certain about the resulting hash
         monkeypatch.setattr(bcrypt, 'gensalt', lambda: known_salt)
@@ -87,7 +88,6 @@ class TestUtils:
     # ----------------------------------------------------------------------------------------------
     def test_create_token__general_case(self) -> None:
         test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
-
         token = utils.create_token(payload=test_payload, expiration_hours=1.0)
 
         token_payload = jwt.decode(
@@ -102,7 +102,6 @@ class TestUtils:
 
     def test_create_token__expired_token(self) -> None:
         test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
-
         # token expired one hour ago.
         token = utils.create_token(payload=test_payload, expiration_hours=-1.0)
 
@@ -115,7 +114,6 @@ class TestUtils:
 
     def test_create_token__invalid_token(self) -> None:
         test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
-
         # Invalid or corrupted token.
         token = (
             utils.create_token(payload=test_payload, expiration_hours=1.0) + 'invalid'
@@ -128,12 +126,23 @@ class TestUtils:
                 algorithms=[config.TOKEN_ALGORITHM]
             )
 
+    def test_create_token__no_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        test_payload = {}
+        monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value=None)
+        with pytest.raises(InvalidAccesTokenKeyError):
+            utils.create_token(payload=test_payload, expiration_hours=1.0)
+
+    def test_create_token__invalid_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        test_payload = {}
+        monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value='')
+        with pytest.raises(InvalidAccesTokenKeyError):
+            utils.create_token(payload=test_payload, expiration_hours=1.0)
+
     # ----------------------------------------------------------------------------------------------
     #   get_token_payload() function
     # ----------------------------------------------------------------------------------------------
     def test_get_token_payload__general_case(self) -> None:
         test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
-
         token = utils.create_token(payload=test_payload, expiration_hours=1.0)
 
         token_payload = utils.get_token_payload(token=token)
@@ -144,7 +153,6 @@ class TestUtils:
 
     def test_get_token_payload__expired_token(self) -> None:
         test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
-
         # token expired one hour ago.
         token = utils.create_token(payload=test_payload, expiration_hours=-1.0)
 
@@ -153,13 +161,28 @@ class TestUtils:
 
     def test_get_token_payload__invalid_token(self) -> None:
         test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
-
         # Invalid or corrupted token.
         token = (
             utils.create_token(payload=test_payload, expiration_hours=1.0) + 'invalid'
         )
 
         with pytest.raises(JWTError):
+            utils.get_token_payload(token=token)
+
+    def test_get_token_payload__no_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        token = utils.create_token(payload=test_payload, expiration_hours=1.0)
+        monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value=None)
+
+        with pytest.raises(InvalidAccesTokenKeyError):
+            utils.get_token_payload(token=token)
+
+    def test_get_token_payload__invalid_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        token = utils.create_token(payload=test_payload, expiration_hours=1.0)
+        monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value='')
+
+        with pytest.raises(InvalidAccesTokenKeyError):
             utils.get_token_payload(token=token)
 
     # ----------------------------------------------------------------------------------------------

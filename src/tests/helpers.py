@@ -33,7 +33,7 @@ def access_database(
 
 
 class Db:
-    """Database access helper class to be used by `TestDb` fixture factory."""
+    """Database access helper class to be used by `test_db` fixture."""
     def __init__(self, database_name: str):
         self.database_name = database_name
 

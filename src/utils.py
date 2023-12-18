@@ -11,6 +11,7 @@ from jose import jwt
 from pydantic import SecretStr
 
 import config
+from exceptions import InvalidAccesTokenKeyError
 
 
 # --------------------------------------------------------------------------------------------------
@@ -49,17 +50,23 @@ def create_token(
     payload = payload or {}
     this_moment = datetime.now(tz=UTC)
     token_expiration = this_moment + timedelta(hours=expiration_hours)
+    key = config.ACCESS_TOKEN_SECRET_KEY
+    if not key:
+        raise InvalidAccesTokenKeyError
     return jwt.encode(
         claims=payload | {'exp': token_expiration},
-        key=config.ACCESS_TOKEN_SECRET_KEY,
+        key=key,
         algorithm=config.TOKEN_ALGORITHM
     )
 
 def get_token_payload(token: str) -> dict:
     """Get token payload if it is valid and not expired."""
+    key = config.ACCESS_TOKEN_SECRET_KEY
+    if not key:
+        raise InvalidAccesTokenKeyError
     return jwt.decode(
         token=token,
-        key=config.ACCESS_TOKEN_SECRET_KEY,
+        key=key,
         algorithms=[config.TOKEN_ALGORITHM]
     )
 

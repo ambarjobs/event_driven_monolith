@@ -2,7 +2,6 @@
 #  Database module tests
 # ==================================================================================================
 import os
-from typing import Type
 
 import httpx
 import pytest
@@ -122,10 +121,8 @@ class TestDatabase:
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.set_app_permissions_on_database() method
     # ----------------------------------------------------------------------------------------------
-    def test_set_app_permissions_on_database__general_case(self, TestDb: Type[Db]) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_set_app_permissions_on_database__general_case(self, test_db: Db) -> None:
+        database_name = test_db.database_name
         expected_permissions = {
             "members": {
                 "roles": ["_admin"]
@@ -158,306 +155,253 @@ class TestDatabase:
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.create_database_indexes() method
     # ----------------------------------------------------------------------------------------------
-    def test_create_database_indexes__general_case(self, TestDb: Type[Db]) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_create_database_indexes__general_case(self, test_db: Db) -> None:
+        database_name = test_db.database_name
         indexes = [
             Index(name='first-index', fields=['field1', 'field2']),
             Index(name='second-index', fields=['field2', 'field3']),
         ]
         database_info = DatabaseInfo(name=database_name, indexes=indexes)
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            db.create_database_indexes(database_info=database_info)
+        test_db.create()
+        test_db.add_permissions()
+        db.create_database_indexes(database_info=database_info)
 
-            database_indexes_response = access_database(
-                access_function=httpx.get,
-                url_parts=[database_name, '_index'],
-                credentials=db.app_credentials,
+        database_indexes_response = access_database(
+            access_function=httpx.get,
+            url_parts=[database_name, '_index'],
+            credentials=db.app_credentials,
+        )
+
+        all_database_indexes = utils.deep_traversal(database_indexes_response, 'indexes')
+        if all_database_indexes is None:
+            raise AttributeError
+        user_indexes = [
+            index for index in all_database_indexes
+            if utils.deep_traversal(index, 'type') == 'json'
+        ]
+
+        index_names = [index.name for index in indexes]
+
+        for index in user_indexes:
+            db_index_name = utils.deep_traversal(index, 'ddoc').removeprefix('_design/')
+            assert db_index_name in index_names
+
+            index_fields = utils.first(
+                [index.fields for index in indexes if index.name == db_index_name]
             )
-
-            all_database_indexes = utils.deep_traversal(database_indexes_response, 'indexes')
-            if all_database_indexes is None:
-                raise AttributeError
-            user_indexes = [
-                index for index in all_database_indexes
-                if utils.deep_traversal(index, 'type') == 'json'
+            if index_fields is None:
+                raise ValueError
+            db_index_fields = [
+                key for field_dict in utils.deep_traversal(index, 'def', 'fields')
+                for key in field_dict.keys()
             ]
-
-            index_names = [index.name for index in indexes]
-
-            for index in user_indexes:
-                db_index_name = utils.deep_traversal(index, 'ddoc').removeprefix('_design/')
-                assert db_index_name in index_names
-
-                index_fields = utils.first(
-                    [index.fields for index in indexes if index.name == db_index_name]
-                )
-                if index_fields is None:
-                    raise ValueError
-                db_index_fields = [
-                    key for field_dict in utils.deep_traversal(index, 'def', 'fields')
-                    for key in field_dict.keys()
-                ]
-                for field in db_index_fields:
-                    assert field in index_fields
-
-        finally:
-            test_db.delete()
+            for field in db_index_fields:
+                assert field in index_fields
 
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.check_document_available() method
     # ----------------------------------------------------------------------------------------------
-    def test_check_document_available__general_case(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_check_document_available__general_case(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         body = {'field': 'value'}
+        test_db.create()
+        test_db.add_permissions()
+        response = test_db.create_document(document_id= document_id, body=body)
+        revision = response.get('rev')
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            response = test_db.create_document(document_id= document_id, body=body)
-            revision = response.get('rev')
+        response_rev = db.check_document_available(
+            database_name=database_name,
+            document_id=document_id
+        )
+        assert response_rev == revision
 
-            response_rev = db.check_document_available(
-                database_name=database_name,
-                document_id=document_id
-            )
-
-            assert response_rev == revision
-        finally:
-            test_db.delete()
-
-    def test_check_document_available__document_not_found(self, TestDb: Type[Db]) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_check_document_available__document_not_found(self, test_db: Db) -> None:
+        database_name = test_db.database_name
         document_id = 'test_document'
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            # The document wasn't created.
+        test_db.create()
+        test_db.add_permissions()
+        # The document wasn't created.
 
-            response_rev = db.check_document_available(
-                database_name=database_name,
-                document_id=document_id
-            )
+        response_rev = db.check_document_available(
+            database_name=database_name,
+            document_id=document_id
+        )
 
-            assert response_rev is None
-        finally:
-            test_db.delete()
+        assert response_rev is None
 
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.get_document_by_id() method
     # ----------------------------------------------------------------------------------------------
-    def test_get_document_by_id__general_case(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_get_document_by_id__general_case(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         body = {'field1': 'value1', 'field2': 'value2'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=body)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=body)
 
-            document_info = db.get_document_by_id(
+        document_info = db.get_document_by_id(
+            database_name=database_name,
+            document_id=document_id,
+        )
+
+        assert document_info
+        assert utils.deep_traversal(document_info, '_id') == document_id
+        assert utils.deep_traversal(document_info, 'field1') == 'value1'
+        assert utils.deep_traversal(document_info, 'field2') == 'value2'
+
+    def test_get_document_by_id__inexistent_document(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
+        document_id = user_id
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        # The document wasn't created, so the `id` doesn't exists on database
+
+        with pytest.raises(httpx.HTTPStatusError, match="Client error '404 Object Not Found'"):
+            db.get_document_by_id(
                 database_name=database_name,
                 document_id=document_id,
             )
-
-            assert document_info
-            assert utils.deep_traversal(document_info, '_id') == document_id
-            assert utils.deep_traversal(document_info, 'field1') == 'value1'
-            assert utils.deep_traversal(document_info, 'field2') == 'value2'
-        finally:
-            test_db.delete()
-
-    def test_get_document_by_id__inexistent_document(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
-        document_id = user_id
-
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            # The document wasn't created, so the `id` doesn't exists on database
-
-            with pytest.raises(httpx.HTTPStatusError, match="Client error '404 Object Not Found'"):
-                db.get_document_by_id(
-                    database_name=database_name,
-                    document_id=document_id,
-                )
-        finally:
-            test_db.delete()
 
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.get_document_fields_by_id() method
     # ----------------------------------------------------------------------------------------------
-    def test_get_document_fields_by_id__general_case(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_get_document_fields_by_id__general_case(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         body = {'field1': 'value1', 'field2': 'value2'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=body)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=body)
 
-            document_info = db.get_document_fields_by_id(
-                database_name=database_name,
-                document_id=document_id,
-                fields=['_id', *body.keys()],
-            )
+        document_info = db.get_document_fields_by_id(
+            database_name=database_name,
+            document_id=document_id,
+            fields=['_id', *body.keys()],
+        )
 
-            assert document_info
-            assert utils.deep_traversal(document_info, '_id') == document_id
-            assert utils.deep_traversal(document_info, 'field1') == 'value1'
-            assert utils.deep_traversal(document_info, 'field2') == 'value2'
-        finally:
-            test_db.delete()
+        assert document_info
+        assert utils.deep_traversal(document_info, '_id') == document_id
+        assert utils.deep_traversal(document_info, 'field1') == 'value1'
+        assert utils.deep_traversal(document_info, 'field2') == 'value2'
 
-    def test_get_document_fields_by_id__all_fields(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_get_document_fields_by_id__all_fields(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         body = {'field1': 'value1', 'field2': 'value2'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=body)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=body)
 
-            document_info = db.get_document_fields_by_id(
-                database_name=database_name,
-                document_id=document_id,
-            )
+        document_info = db.get_document_fields_by_id(
+            database_name=database_name,
+            document_id=document_id,
+        )
 
-            assert document_info
-            assert utils.deep_traversal(document_info, '_id') == document_id
-            assert utils.deep_traversal(document_info, 'field1') == 'value1'
-            assert utils.deep_traversal(document_info, 'field2') == 'value2'
-        finally:
-            test_db.delete()
+        assert document_info
+        assert utils.deep_traversal(document_info, '_id') == document_id
+        assert utils.deep_traversal(document_info, 'field1') == 'value1'
+        assert utils.deep_traversal(document_info, 'field2') == 'value2'
 
-    def test_get_document_fields_by_id__specific_fields(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_get_document_fields_by_id__specific_fields(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         body = {'field1': 'value1', 'field2': 'value2'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=body)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=body)
 
-            document_info = db.get_document_fields_by_id(
-                database_name=database_name,
-                document_id=document_id,
-                fields=['field1']
-            )
+        document_info = db.get_document_fields_by_id(
+            database_name=database_name,
+            document_id=document_id,
+            fields=['field1']
+        )
 
-            assert document_info
-            assert utils.deep_traversal(document_info, '_id') is None
-            assert utils.deep_traversal(document_info, 'field1') == 'value1'
-            assert utils.deep_traversal(document_info, 'field2') is None
-        finally:
-            test_db.delete()
+        assert document_info
+        assert utils.deep_traversal(document_info, '_id') is None
+        assert utils.deep_traversal(document_info, 'field1') == 'value1'
+        assert utils.deep_traversal(document_info, 'field2') is None
 
-    def test_get_document_fields_by_id__inexistent_field(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_get_document_fields_by_id__inexistent_field(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         body = {'field1': 'value1', 'field2': 'value2'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=body)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=body)
 
-            document_info = db.get_document_fields_by_id(
-                database_name=database_name,
-                document_id=document_id,
-                fields=['inexistent']
-            )
+        document_info = db.get_document_fields_by_id(
+            database_name=database_name,
+            document_id=document_id,
+            fields=['inexistent']
+        )
 
-            assert document_info == {}
-        finally:
-            test_db.delete()
+        assert document_info == {}
 
     def test_get_document_fields_by_id__inexistent_document(
         self,
-        TestDb: Type[Db],
+        test_db: Db,
         user_id: str
     ) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+        database_name = test_db.database_name
         document_id = user_id
         body = {'field1': 'value1', 'field2': 'value2'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            # The document wasn't created, so the `id` doesn't exists on database
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        # The document wasn't created, so the `id` doesn't exists on database
 
-            document_info = db.get_document_fields_by_id(
-                database_name=database_name,
-                document_id=document_id,
-                fields=['_id', *body.keys()],
-            )
+        document_info = db.get_document_fields_by_id(
+            database_name=database_name,
+            document_id=document_id,
+            fields=['_id', *body.keys()],
+        )
 
-            assert document_info == {}
-        finally:
-            test_db.delete()
+        assert document_info == {}
 
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.update_document_fields() method
@@ -508,153 +452,141 @@ class TestDatabase:
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.update_document() method
     # ----------------------------------------------------------------------------------------------
-    def test_update_document__general_case(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_update_document__general_case(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
         fields_to_change = {'field2': 'value2a'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=fields)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=fields)
 
-            new_revision = db.update_document(
-                database_name=database_name,
-                document_id=document_id,
-                fields_to_change=fields_to_change
-            )
+        new_revision = db.update_document(
+            database_name=database_name,
+            document_id=document_id,
+            fields_to_change=fields_to_change
+        )
 
-            document_data = test_db.get_document_by_id(document_id=document_id)
+        document_data = test_db.get_document_by_id(document_id=document_id)
 
-            assert document_data
-            assert utils.deep_traversal(document_data, '_id') == document_id
-            assert utils.deep_traversal(document_data, '_rev') == new_revision
-            assert utils.deep_traversal(document_data, 'field1') == 'value1'
-            assert utils.deep_traversal(document_data, 'field2') == 'value2a'
-            assert utils.deep_traversal(document_data, 'field3') == 'value3'
-        finally:
-            test_db.delete()
+        assert document_data
+        assert utils.deep_traversal(document_data, '_id') == document_id
+        assert utils.deep_traversal(document_data, '_rev') == new_revision
+        assert utils.deep_traversal(document_data, 'field1') == 'value1'
+        assert utils.deep_traversal(document_data, 'field2') == 'value2a'
+        assert utils.deep_traversal(document_data, 'field3') == 'value3'
 
-    def test_update_document__additional_fields(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_update_document__additional_fields(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
         fields_to_change = {'field2': 'value2a', 'field4': 'value4'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=fields)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=fields)
 
-            new_revision = db.update_document(
-                database_name=database_name,
-                document_id=document_id,
-                fields_to_change=fields_to_change
-            )
+        new_revision = db.update_document(
+            database_name=database_name,
+            document_id=document_id,
+            fields_to_change=fields_to_change
+        )
 
-            document_data = test_db.get_document_by_id(document_id=document_id)
+        document_data = test_db.get_document_by_id(document_id=document_id)
 
-            assert document_data
-            assert utils.deep_traversal(document_data, '_id') == document_id
-            assert utils.deep_traversal(document_data, '_rev') == new_revision
-            assert utils.deep_traversal(document_data, 'field1') == 'value1'
-            assert utils.deep_traversal(document_data, 'field2') == 'value2a'
-            assert utils.deep_traversal(document_data, 'field3') == 'value3'
-            assert utils.deep_traversal(document_data, 'field4') == 'value4'
-        finally:
-            test_db.delete()
+        assert document_data
+        assert utils.deep_traversal(document_data, '_id') == document_id
+        assert utils.deep_traversal(document_data, '_rev') == new_revision
+        assert utils.deep_traversal(document_data, 'field1') == 'value1'
+        assert utils.deep_traversal(document_data, 'field2') == 'value2a'
+        assert utils.deep_traversal(document_data, 'field3') == 'value3'
+        assert utils.deep_traversal(document_data, 'field4') == 'value4'
 
-    def test_update_document__fields_unchanged(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_update_document__fields_unchanged(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
         fields_to_change = {'field2': 'value2'}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=fields)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=fields)
 
-            new_revision = db.update_document(
-                database_name=database_name,
-                document_id=document_id,
-                fields_to_change=fields_to_change
-            )
+        new_revision = db.update_document(
+            database_name=database_name,
+            document_id=document_id,
+            fields_to_change=fields_to_change
+        )
 
-            document_data = test_db.get_document_by_id(document_id=document_id)
+        document_data = test_db.get_document_by_id(document_id=document_id)
 
-            assert document_data
-            assert utils.deep_traversal(document_data, '_id') == document_id
-            assert utils.deep_traversal(document_data, '_rev') == new_revision
-            assert utils.deep_traversal(document_data, 'field1') == 'value1'
-            assert utils.deep_traversal(document_data, 'field2') == 'value2'
-            assert utils.deep_traversal(document_data, 'field3') == 'value3'
-        finally:
-            test_db.delete()
+        assert document_data
+        assert utils.deep_traversal(document_data, '_id') == document_id
+        assert utils.deep_traversal(document_data, '_rev') == new_revision
+        assert utils.deep_traversal(document_data, 'field1') == 'value1'
+        assert utils.deep_traversal(document_data, 'field2') == 'value2'
+        assert utils.deep_traversal(document_data, 'field3') == 'value3'
 
-    def test_update_document__no_fields_to_change(self, TestDb: Type[Db], user_id: str) -> None:
-        database_name = f'{config.TEST_PREFIX}-database'
-        test_db = TestDb(database_name=database_name)
-
+    def test_update_document__no_fields_to_change(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
         document_id = user_id
         fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
         fields_to_change = {}
 
-        try:
-            test_db.create()
-            test_db.add_permissions()
-            test_db.create_indexes(
-                indexes=[
-                    Index(name=f'{database_name}-id-index', fields=['_id'])
-                ]
-            )
-            test_db.create_document(document_id= document_id, body=fields)
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= document_id, body=fields)
 
-            new_revision = db.update_document(
-                database_name=database_name,
-                document_id=document_id,
-                fields_to_change=fields_to_change
-            )
+        new_revision = db.update_document(
+            database_name=database_name,
+            document_id=document_id,
+            fields_to_change=fields_to_change
+        )
 
-            document_data = test_db.get_document_by_id(document_id=document_id)
+        document_data = test_db.get_document_by_id(document_id=document_id)
 
-            assert document_data
-            assert utils.deep_traversal(document_data, '_id') == document_id
-            assert utils.deep_traversal(document_data, '_rev') == new_revision
-            assert utils.deep_traversal(document_data, 'field1') == 'value1'
-            assert utils.deep_traversal(document_data, 'field2') == 'value2'
-            assert utils.deep_traversal(document_data, 'field3') == 'value3'
-        finally:
-            test_db.delete()
+        assert document_data
+        assert utils.deep_traversal(document_data, '_id') == document_id
+        assert utils.deep_traversal(document_data, '_rev') == new_revision
+        assert utils.deep_traversal(document_data, 'field1') == 'value1'
+        assert utils.deep_traversal(document_data, 'field2') == 'value2'
+        assert utils.deep_traversal(document_data, 'field3') == 'value3'
 
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.sign_in_user() method
     # ----------------------------------------------------------------------------------------------
-    def test_sign_in_user__general_case(self, TestDb: Type[Db], user_id: str) -> None:
-        credentials_db = TestDb(database_name=config.USER_CREDENTIALS_DB_NAME)
-        info_db = TestDb(database_name=config.USER_INFO_DB_NAME)
+    def test_sign_in_user__general_case(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        user_id: str
+    ) -> None:
+        credentials_db = test_db
+        credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
+
+        info_db = another_test_db
+        info_db.database_name = config.USER_INFO_DB_NAME
 
         test_password = SecretStr(f'{config.TEST_PREFIX}_password')
         test_hash = utils.calc_hash(test_password)
@@ -662,36 +594,31 @@ class TestDatabase:
         test_user_phone = '+12 (345) 678-901'
         test_user_info = sch.UserInfo(id=user_id, name=test_user_name, phone_number=test_user_phone)
 
-        try:
-            credentials_db.create()
-            info_db.create()
-            credentials_db.add_permissions()
-            info_db.add_permissions()
+        credentials_db.create()
+        info_db.create()
+        credentials_db.add_permissions()
+        info_db.add_permissions()
 
-            db.sign_in_user(
-                id=user_id,
-                hash_=test_hash,
-                user_info=test_user_info,
-            )
+        db.sign_in_user(
+            id=user_id,
+            hash_=test_hash,
+            user_info=test_user_info,
+        )
 
-            credentials_doc = credentials_db.get_document_by_id(
-                document_id=user_id,
-            )
+        credentials_doc = credentials_db.get_document_by_id(
+            document_id=user_id,
+        )
 
-            assert credentials_doc is not None
-            assert credentials_doc.get('_id') == user_id
-            assert credentials_doc.get('hash') == test_hash
+        assert credentials_doc is not None
+        assert credentials_doc.get('_id') == user_id
+        assert credentials_doc.get('hash') == test_hash
 
-            info_doc = info_db.get_document_by_id(
-                document_id=user_id,
-            )
+        info_doc = info_db.get_document_by_id(
+            document_id=user_id,
+        )
 
-            assert info_doc is not None
-            assert info_doc.get('_id') == user_id
-            assert info_doc.get('name') == test_user_name
-            assert info_doc.get('phone_number') == test_user_phone
-            assert 'address' not in info_doc
-
-        finally:
-            credentials_db.delete()
-            info_db.delete()
+        assert info_doc is not None
+        assert info_doc.get('_id') == user_id
+        assert info_doc.get('name') == test_user_name
+        assert info_doc.get('phone_number') == test_user_phone
+        assert 'address' not in info_doc

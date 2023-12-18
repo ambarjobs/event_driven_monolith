@@ -1,7 +1,6 @@
 # ==================================================================================================
 #  Tests fixtures
 # ==================================================================================================
-from typing import Type
 from datetime import datetime, UTC
 
 import pytest
@@ -93,9 +92,20 @@ def this_moment() -> datetime:
 #   Database
 # --------------------------------------------------------------------------------------------------
 @pytest.fixture
-def TestDb() -> Type[Db]:
-    """Fixture factory for database access class."""
-    return Db
+def test_db() -> Db:
+    """Test database instance."""
+    db = Db(database_name=f'{config.TEST_PREFIX}-database')
+    yield db
+    db.delete()
+
+
+@pytest.fixture
+def another_test_db() -> Db:
+    """Another test database instance."""
+    db = Db(database_name=f'another-{config.TEST_PREFIX}-database')
+    yield db
+    db.delete()
+
 
 @pytest.fixture
 def user_credentials(password) -> sch.UserCredentials:
