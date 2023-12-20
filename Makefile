@@ -137,3 +137,10 @@ inside-db: ## Reach OS shell inside CouchDB container.
 .PHONY: init-db
 init-db: ## Initialize CouchDB and create app user.
 	@docker-compose exec -d couchdb ./init_couchdb
+
+# ==================================================================================================
+#  Rabbitmq commands
+# --------------------------------------------------------------------------------------------------
+.PHONY: inside-rabbit
+inside-rabbit: ## Reach OS shell inside RabitMQ container.
+	@docker-compose exec -it rabbitmq /bin/bash

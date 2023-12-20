@@ -36,5 +36,5 @@ class UserInfo(BaseModel):
     """User informations schema."""
     id: EmailStr
     name: str = Field(max_length=NAME_MAX_LENGHT)
-    phone_number: str = Field(default=None, max_length=PHONE_MAX_LENGHT)
-    address: str = Field(default=None, max_length=ADDRESS_MAX_LENGHT)
+    phone_number: str | None = Field(default=None, max_length=PHONE_MAX_LENGHT)
+    address: str | None = Field(default=None, max_length=ADDRESS_MAX_LENGHT)

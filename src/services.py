@@ -33,11 +33,11 @@ def http_error_status(error: httpx.HTTPStatusError):
 # ==================================================================================================
 #   Specific utils
 # ==================================================================================================
-def user_is_logged_in(db_user_info: dict[str, Any]) -> bool:
+def user_is_logged_in(db_user_credentials: dict[str, Any]) -> bool:
     """Check if user is logged in."""
     this_moment = datetime.now(tz=UTC)
 
-    last_login = utils.deep_traversal(db_user_info, 'last_login')
+    last_login = utils.deep_traversal(db_user_credentials, 'last_login')
     return (
         last_login and
         this_moment - datetime.fromisoformat(last_login) <
@@ -123,7 +123,7 @@ def authentication(credentials: sch.UserCredentials) -> dict[str, Any]:
         # ------------------------------------------------------------------------------------------
 
         try:
-            db_user_info = db.get_document_by_id(
+            db_user_credentials = db.get_document_by_id(
                 database_name=config.USER_CREDENTIALS_DB_NAME,
                 document_id=credentials.id
             )
@@ -133,7 +133,7 @@ def authentication(credentials: sch.UserCredentials) -> dict[str, Any]:
                 return incorrect_login_status.model_dump(exclude_unset=True)
             return http_error_status(error=err)
 
-        user_hash = utils.deep_traversal(db_user_info, 'hash')
+        user_hash = utils.deep_traversal(db_user_credentials, 'hash')
         if user_hash is None:
             # User has no hash.
             return incorrect_login_status.model_dump(exclude_unset=True)
@@ -143,11 +143,11 @@ def authentication(credentials: sch.UserCredentials) -> dict[str, Any]:
             # Invalid password.
             return incorrect_login_status.model_dump(exclude_unset=True)
 
-        validated  = utils.deep_traversal(db_user_info, 'validated')
+        validated  = utils.deep_traversal(db_user_credentials, 'validated')
         if not validated:
             return email_not_validated_status.model_dump(exclude_unset=True)
 
-        logged_in = user_is_logged_in(db_user_info=db_user_info)
+        logged_in = user_is_logged_in(db_user_credentials=db_user_credentials)
         if logged_in:
             return user_already_logged_in_status.model_dump(exclude_unset=True)
 

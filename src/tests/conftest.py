@@ -8,6 +8,7 @@ from pydantic import SecretStr
 
 import config
 import schemas as sch
+import pubsub as ps
 from tests.helpers import Db
 
 
@@ -128,3 +129,21 @@ def user_info() -> sch.UserInfo:
 def user_id() -> str:
     """Test user id."""
     return f'{config.TEST_PREFIX}@user.id'
+
+
+# --------------------------------------------------------------------------------------------------
+#   Pubsub
+# --------------------------------------------------------------------------------------------------
+@pytest.fixture
+def pub_sub() -> ps.PubSub:
+    """Test PubSub object."""
+    pub_sub = ps.PubSub()
+    yield pub_sub
+    pub_sub.connection.close()
+
+@pytest.fixture
+def another_pub_sub() -> ps.PubSub:
+    """Test PubSub object."""
+    pub_sub = ps.PubSub()
+    yield pub_sub
+    pub_sub.connection.close()
