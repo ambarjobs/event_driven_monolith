@@ -2,6 +2,7 @@
 #  Main module tests
 # ==================================================================================================
 from datetime import datetime, timedelta, UTC
+from unittest import mock
 
 import bcrypt
 import pytest
@@ -11,14 +12,11 @@ from fastapi.testclient import TestClient
 import config
 import schemas as sch
 import utils
-from tests.helpers import Db
 from main import app
+from tests.helpers import Db
 
 
 TEST_EXECUTION_LIMIT = 15
-
-config.USER_CREDENTIALS_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_CREDENTIALS_DB_NAME}'
-config.USER_INFO_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_INFO_DB_NAME}'
 
 client = TestClient(app=app)
 
@@ -41,6 +39,7 @@ class TestMain:
         credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
         info_db = another_test_db
         info_db.database_name = config.USER_INFO_DB_NAME
+
         body = {
             "credentials": {
                 "id": user_credentials.id,
@@ -57,16 +56,18 @@ class TestMain:
         credentials_db.add_permissions()
         info_db.add_permissions()
 
-        response = client.post('/signin', json=body)
+        # Blocks `user-signed-in` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.post('/signin', json=body)
 
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.json() == {
-            'status': 'successful_sign_in',
-            'error': False,
-            'details': {
-                'description': 'User signed in successfully.'
+            assert response.status_code == status.HTTP_201_CREATED
+            assert response.json() == {
+                'status': 'successful_sign_in',
+                'error': False,
+                'details': {
+                    'description': 'User signed in successfully.'
+                }
             }
-        }
 
         credentials_doc = credentials_db.get_document_by_id(
             document_id=user_credentials.id,
@@ -115,28 +116,30 @@ class TestMain:
         credentials_db.add_permissions()
         info_db.add_permissions()
 
-        client.post('/signin', json=body)
+        # Blocks `user-signed-in` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            client.post('/signin', json=body)
 
-        # Try to sign in a pre existent user.
-        response = client.post('/signin', json=body)
+            # Try to sign in a pre existent user.
+            response = client.post('/signin', json=body)
 
-        credentials_doc = credentials_db.get_document_by_id(
-            document_id=user_credentials.id,
-        )
+            credentials_doc = credentials_db.get_document_by_id(
+                document_id=user_credentials.id,
+            )
 
-        expected_result = {
-            'status': 'user_already_signed_in',
-            'error': True,
-            'details': {
-                'description': 'User already signed in.',
-                'data': {
-                    'version': credentials_doc['_rev']
+            expected_result = {
+                'status': 'user_already_signed_in',
+                'error': True,
+                'details': {
+                    'description': 'User already signed in.',
+                    'data': {
+                        'version': credentials_doc['_rev']
+                    }
                 }
             }
-        }
 
-        assert response.status_code == status.HTTP_409_CONFLICT
-        assert response.json() == expected_result
+            assert response.status_code == status.HTTP_409_CONFLICT
+            assert response.json() == expected_result
 
     # ==============================================================================================
     #   /login endpoint test

@@ -15,10 +15,6 @@ from exceptions import InvalidCouchDBCredentialError
 from tests.helpers import access_database, Db
 
 
-config.USER_CREDENTIALS_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_CREDENTIALS_DB_NAME}'
-config.USER_INFO_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_INFO_DB_NAME}'
-
-
 class TestDatabase:
     # ----------------------------------------------------------------------------------------------
     #   CouchDB._get_credentials() method
@@ -404,6 +400,45 @@ class TestDatabase:
         assert document_info == {}
 
     # ----------------------------------------------------------------------------------------------
+    #   CouchDB.clean_up_fields() method
+    # ----------------------------------------------------------------------------------------------
+    def test_clean_up_fields__general_case(self) -> None:
+        test_fields = {
+            '_id': 'test_id_value',
+            '_rev': '1-234567890',
+            'field1': 'value1',
+            'field2': 'value2',
+            'field3': 'value3'
+        }
+
+        expected_fields = {
+            'field1': 'value1',
+            'field2': 'value2',
+            'field3': 'value3'
+        }
+
+        assert db.clean_up_fields(fields=test_fields) == expected_fields
+
+    def test_clean_up_fields__no_special_fields(self) -> None:
+        test_fields = {
+            'field1': 'value1',
+            'field2': 'value2',
+            'field3': 'value3'
+        }
+
+        assert db.clean_up_fields(fields=test_fields) == test_fields
+
+    def test_clean_up_fields__only_special_fields(self) -> None:
+        test_fields = {
+            '_id': 'test_id_value',
+            '_rev': '1-234567890',
+        }
+
+        expected_fields = {}
+
+        assert db.clean_up_fields(fields=test_fields) == expected_fields
+
+    # ----------------------------------------------------------------------------------------------
     #   CouchDB.update_document_fields() method
     # ----------------------------------------------------------------------------------------------
     def test_update_document_fields__general_case(self)  -> None:
@@ -450,12 +485,66 @@ class TestDatabase:
         )
 
     # ----------------------------------------------------------------------------------------------
-    #   CouchDB.update_document() method
+    #   CouchDB.upsert_document() method
     # ----------------------------------------------------------------------------------------------
-    def test_update_document__general_case(self, test_db: Db, user_id: str) -> None:
+    def test_upsert_document__insert__general_case(self, test_db: Db, user_id: str) -> None:
         database_name = test_db.database_name
         document_id = user_id
-        fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
+        all_fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+
+        revision = db.upsert_document(
+            database_name=database_name,
+            document_id=document_id,
+            fields=all_fields
+        )
+
+        document_data = test_db.get_document_by_id(document_id=document_id)
+
+        assert document_data
+        assert utils.deep_traversal(document_data, '_id') == document_id
+        assert utils.deep_traversal(document_data, '_rev') == revision
+        assert utils.deep_traversal(document_data, 'field1') == 'value1'
+        assert utils.deep_traversal(document_data, 'field2') == 'value2'
+        assert utils.deep_traversal(document_data, 'field3') == 'value3'
+
+    def test_upsert_document__insert__no_fields(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
+        document_id = user_id
+        all_fields = {}
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+
+        revision = db.upsert_document(
+            database_name=database_name,
+            document_id=document_id,
+            fields=all_fields
+        )
+
+        document_data = test_db.get_document_by_id(document_id=document_id)
+
+        assert document_data
+        assert utils.deep_traversal(document_data, '_id') == document_id
+        assert utils.deep_traversal(document_data, '_rev') == revision
+        assert len(document_data) == 2
+
+    def test_upsert_document__update__general_case(self, test_db: Db, user_id: str) -> None:
+        database_name = test_db.database_name
+        document_id = user_id
+        all_fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
         fields_to_change = {'field2': 'value2a'}
 
         test_db.create()
@@ -465,12 +554,12 @@ class TestDatabase:
                 Index(name=f'{database_name}-id-index', fields=['_id'])
             ]
         )
-        test_db.create_document(document_id= document_id, body=fields)
+        test_db.create_document(document_id= document_id, body=all_fields)
 
-        new_revision = db.update_document(
+        new_revision = db.upsert_document(
             database_name=database_name,
             document_id=document_id,
-            fields_to_change=fields_to_change
+            fields=fields_to_change
         )
 
         document_data = test_db.get_document_by_id(document_id=document_id)
@@ -482,10 +571,10 @@ class TestDatabase:
         assert utils.deep_traversal(document_data, 'field2') == 'value2a'
         assert utils.deep_traversal(document_data, 'field3') == 'value3'
 
-    def test_update_document__additional_fields(self, test_db: Db, user_id: str) -> None:
+    def test_upsert_document__update__additional_fields(self, test_db: Db, user_id: str) -> None:
         database_name = test_db.database_name
         document_id = user_id
-        fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
+        all_fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
         fields_to_change = {'field2': 'value2a', 'field4': 'value4'}
 
         test_db.create()
@@ -495,12 +584,12 @@ class TestDatabase:
                 Index(name=f'{database_name}-id-index', fields=['_id'])
             ]
         )
-        test_db.create_document(document_id= document_id, body=fields)
+        test_db.create_document(document_id= document_id, body=all_fields)
 
-        new_revision = db.update_document(
+        new_revision = db.upsert_document(
             database_name=database_name,
             document_id=document_id,
-            fields_to_change=fields_to_change
+            fields=fields_to_change
         )
 
         document_data = test_db.get_document_by_id(document_id=document_id)
@@ -513,10 +602,10 @@ class TestDatabase:
         assert utils.deep_traversal(document_data, 'field3') == 'value3'
         assert utils.deep_traversal(document_data, 'field4') == 'value4'
 
-    def test_update_document__fields_unchanged(self, test_db: Db, user_id: str) -> None:
+    def test_upsert_document__update__fields_unchanged(self, test_db: Db, user_id: str) -> None:
         database_name = test_db.database_name
         document_id = user_id
-        fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
+        all_fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
         fields_to_change = {'field2': 'value2'}
 
         test_db.create()
@@ -526,12 +615,12 @@ class TestDatabase:
                 Index(name=f'{database_name}-id-index', fields=['_id'])
             ]
         )
-        test_db.create_document(document_id= document_id, body=fields)
+        test_db.create_document(document_id= document_id, body=all_fields)
 
-        new_revision = db.update_document(
+        new_revision = db.upsert_document(
             database_name=database_name,
             document_id=document_id,
-            fields_to_change=fields_to_change
+            fields=fields_to_change
         )
 
         document_data = test_db.get_document_by_id(document_id=document_id)
@@ -543,10 +632,10 @@ class TestDatabase:
         assert utils.deep_traversal(document_data, 'field2') == 'value2'
         assert utils.deep_traversal(document_data, 'field3') == 'value3'
 
-    def test_update_document__no_fields_to_change(self, test_db: Db, user_id: str) -> None:
+    def test_upsert_document__update__no_fields_to_change(self, test_db: Db, user_id: str) -> None:
         database_name = test_db.database_name
         document_id = user_id
-        fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
+        all_fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
         fields_to_change = {}
 
         test_db.create()
@@ -556,12 +645,12 @@ class TestDatabase:
                 Index(name=f'{database_name}-id-index', fields=['_id'])
             ]
         )
-        test_db.create_document(document_id= document_id, body=fields)
+        test_db.create_document(document_id= document_id, body=all_fields)
 
-        new_revision = db.update_document(
+        new_revision = db.upsert_document(
             database_name=database_name,
             document_id=document_id,
-            fields_to_change=fields_to_change
+            fields=fields_to_change
         )
 
         document_data = test_db.get_document_by_id(document_id=document_id)

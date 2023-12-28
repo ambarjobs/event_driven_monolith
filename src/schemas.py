@@ -38,3 +38,16 @@ class UserInfo(BaseModel):
     name: str = Field(max_length=NAME_MAX_LENGHT)
     phone_number: str | None = Field(default=None, max_length=PHONE_MAX_LENGHT)
     address: str | None = Field(default=None, max_length=ADDRESS_MAX_LENGHT)
+
+
+class EmailConfirmationUserInfo(BaseModel):
+    """User information used for email confirmation."""
+    id: EmailStr
+    name: str = Field(max_length=NAME_MAX_LENGHT)
+
+
+class EmailConfirmationInfo(BaseModel):
+    """Info needed for email confirmation."""
+    user_info: EmailConfirmationUserInfo
+    validation_expiration_period: int
+    email_confirmation_token: str

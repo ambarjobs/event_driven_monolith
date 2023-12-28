@@ -156,37 +156,49 @@ class CouchDb:
         document_info = utils.deep_traversal(response.json(), 'docs', 0)
         return document_info or {}
 
+    def clean_up_fields(self, fields: dict) -> dict:
+        """Remove special fields from fields dict."""
+        SPECIAL_FIELDS = ['_id', '_rev']
+        return {key: value for key, value in fields.items() if key not in SPECIAL_FIELDS}
+
     def update_document_fields(self, original_fields: dict, updated_fields: dict) -> dict:
         """Update document fields with new values, excluding special fields."""
-        SPECIAL_FIELDS = ['_id', '_rev']
-        return {
-            key: value for key, value in (original_fields | updated_fields).items()
-            if key not in SPECIAL_FIELDS
-        }
+        return self.clean_up_fields(fields=original_fields | updated_fields)
 
-    def update_document(
+    def upsert_document(
         self,
         database_name: str,
         document_id: str,
-        fields_to_change: dict
+        fields: dict
     ) -> str:
-        """Update the fields of an existing document."""
-        document_fields = self.get_document_by_id(
-            database_name=database_name,
-            document_id=document_id
-        )
-        revision = utils.deep_traversal(document_fields, '_rev')
-        updated_fields = self.update_document_fields(
-            original_fields=document_fields,
-            updated_fields=fields_to_change
-        )
-        response = httpx.put(
-            url=f'{self.url}/{database_name}/{document_id}',
-            auth=self.app_credentials,
-            json=updated_fields,
-            headers={'if-match': revision}
-        ).raise_for_status()
-        return utils.deep_traversal(response.json(), 'rev')
+        """Update the fields of an existing document or insert then if it doesn't exists."""
+        response = None
+        try:
+            document_fields = self.get_document_by_id(
+                database_name=database_name,
+                document_id=document_id
+            )
+            revision = utils.deep_traversal(document_fields, '_rev')
+            updated_fields = self.update_document_fields(
+                original_fields=document_fields,
+                updated_fields=fields
+            )
+            response = httpx.put(
+                url=f'{self.url}/{database_name}/{document_id}',
+                auth=self.app_credentials,
+                json=updated_fields,
+                headers={'if-match': revision}
+            ).raise_for_status()
+            return utils.deep_traversal(response.json(), 'rev')
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code == status.HTTP_404_NOT_FOUND:
+                response = httpx.put(
+                    url=f'{self.url}/{database_name}/{document_id}',
+                    auth=self.app_credentials,
+                    json=self.clean_up_fields(fields),
+                ).raise_for_status()
+        response_json = response.json() if response else None
+        return utils.deep_traversal(response_json, 'rev')
 
     def sign_in_user(
         self,

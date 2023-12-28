@@ -3,37 +3,19 @@
 # ==================================================================================================
 from typing import Annotated
 
-import httpx
 from fastapi import Depends, FastAPI, status
 from fastapi.responses import JSONResponse
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import SecretStr
 
+import core
 import schemas as sch
 import services as srv
-from database import DatabaseInfo, db, Index
+from core import oauth2_scheme
 
 
-APP_DATABASES_INFO = [
-    DatabaseInfo(
-        name='user-credentials',
-        indexes=[Index(name='user-credentials-id-index', fields=['_id'])]
-    ),
-    DatabaseInfo(name='user-info', indexes=[Index(name='user-info-id-index', fields=['_id'])]),
-]
-
-try:
-    db.init_databases(database_names=[info.name for info in APP_DATABASES_INFO])
-    for db_info in APP_DATABASES_INFO:
-        db.create_database_indexes(database_info=db_info)
-except httpx.HTTPError as err:
-    print(f'Error trying to initialize the databases: {err}')
-    exit(-1)
-except httpx.InvalidURL as err:
-    print(f'Invalid database URL: {err}')
-    exit(-1)
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+core.init_app_databases()
+core.start_consumers(subscriptions=core.APP_CONSUMERS)
 
 app = FastAPI()
 
@@ -61,7 +43,7 @@ def signin(
     if result_sch.error and result_sch.status == 'http_error':
         return JSONResponse(
             content=result,
-            status_code=result_sch.details.error_code or 0
+            status_code=result_sch.details.error_code or 500
         )
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
@@ -78,14 +60,18 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
         ):
             return JSONResponse(content=login_data, status_code=status.HTTP_401_UNAUTHORIZED)
         case sch.ServiceStatus(status='http_error'):
-            return JSONResponse(content=login_data, status_code=login_status.details.error_code)
+            return JSONResponse(
+                content=login_data,
+                status_code=login_status.details.error_code or 500
+            )
         case _:
             return JSONResponse(content=login_data, status_code=status.HTTP_200_OK)
 
 
 @app.get('/tst')
 def teste(token: Annotated[str, Depends(oauth2_scheme)]):
-    return {}
+# def teste():
+    return {'status': 'OK'}
 # @app.post('/stores/add', status_code=status.HTTP_201_CREATED)
 # def add_store(store: srlz.StoreIn):
 #     """Adiciona uma loja."""

@@ -1,21 +1,19 @@
 # ==================================================================================================
 #  Services module tests
 # ==================================================================================================
+import json
 from datetime import datetime, timedelta, UTC
+from unittest import mock
 
 import bcrypt
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 import config
 import schemas as sch
 import services as srv
 import utils
 from tests.helpers import Db
-
-
-config.USER_CREDENTIALS_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_CREDENTIALS_DB_NAME}'
-config.USER_INFO_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_INFO_DB_NAME}'
 
 
 class TestServices:
@@ -45,15 +43,23 @@ class TestServices:
         credentials_db.add_permissions()
         info_db.add_permissions()
 
-        result = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
-        expected_result = {
-            'status': 'successful_sign_in',
-            'error': False,
-            'details': {
-                'description': 'User signed in successfully.'
+        with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
+            result = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
+            event_message = utils.filter_data(data=user_info.model_dump(), keep=['id', 'name'])
+            expected_event_message = json.dumps(event_message, separators=(',', ':'))
+            mock_publish.assert_called_with(
+                topic='user-signed-in',
+                message=expected_event_message
+            )
+
+            expected_result = {
+                'status': 'successful_sign_in',
+                'error': False,
+                'details': {
+                    'description': 'User signed in successfully.'
+                }
             }
-        }
-        assert result == expected_result
+            assert result == expected_result
 
         credentials_doc = credentials_db.get_document_by_id(
             document_id=user_credentials.id,
@@ -93,24 +99,26 @@ class TestServices:
         credentials_db.add_permissions()
         info_db.add_permissions()
 
-        srv.user_sign_in(credentials=user_credentials, user_info=user_info)
+        # Blocks `user-signed-in` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            srv.user_sign_in(credentials=user_credentials, user_info=user_info)
 
-        # Try to sign in again an user already signed in.
-        result = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
-        credentials_doc = credentials_db.get_document_by_id(
-            document_id=user_credentials.id,
-        )
-        expected_result = {
-            'status': 'user_already_signed_in',
-            'error': True,
-            'details': {
-                'description': 'User already signed in.',
-                'data': {
-                    'version': credentials_doc['_rev']
+            # Try to sign in again an user already signed in.
+            result = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
+            credentials_doc = credentials_db.get_document_by_id(
+                document_id=user_credentials.id,
+            )
+            expected_result = {
+                'status': 'user_already_signed_in',
+                'error': True,
+                'details': {
+                    'description': 'User already signed in.',
+                    'data': {
+                        'version': credentials_doc['_rev']
+                    }
                 }
             }
-        }
-        assert result == expected_result
+            assert result == expected_result
 
     # ==============================================================================================
     #   authentication service
@@ -384,3 +392,60 @@ class TestServices:
                 utils.deep_traversal(credentials_data, 'last_login')
             ) - before_login > timedelta(seconds=0)
         )
+
+    # ==============================================================================================
+    #   Message delivery services
+    # ==============================================================================================
+    def test_stdout_message_delivery__general_case(self, capsys) -> None:
+        test_message = '''Some multi-line message.
+        To be delivered to stdout.
+        '''
+        srv.stdout_message_delivery(message=test_message)
+        captured = capsys.readouterr()
+
+        assert test_message in captured.out
+
+    # ==============================================================================================
+    #   email_confirmation service
+    # ==============================================================================================
+    def test_email_confirmation__general_case(
+        self,
+        capsys,
+        callback_null_params,
+        test_db: Db,
+    ) -> None:
+        test_user_info = sch.EmailConfirmationUserInfo(id='test@user.id', name='Mr. Test')
+        serialized_user_info = test_user_info.model_dump_json()
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confirmation_data = email_confimation_db.get_document_by_id(
+            document_id=test_user_info.id
+        )
+        assert 'email_confirmation_token' not in email_confirmation_data
+
+        with mock.patch(target='services.stdout_message_delivery') as mock_delivery:
+            srv.email_confirmation(**callback_null_params, body=serialized_user_info)
+            mock_delivery.assert_called()
+
+        srv.email_confirmation(**callback_null_params, body=serialized_user_info)
+        captured = capsys.readouterr()
+        assert test_user_info.name in captured.out
+        assert 'To confirm you subscription, please access the following link:' in captured.out
+
+        email_confirmation_data = email_confimation_db.get_document_by_id(
+            document_id=test_user_info.id
+        )
+        assert 'email_confirmation_token' in email_confirmation_data
+        assert email_confirmation_data['email_confirmation_token']
+
+    def test_email_confirmation__invalid_event(self, callback_null_params) -> None:
+        test_user_info = {'invalid_field': 'invalid'}
+        serialized_user_info = json.dumps(test_user_info)
+
+        with pytest.raises(ValidationError):
+            srv.email_confirmation(**callback_null_params, body=serialized_user_info)

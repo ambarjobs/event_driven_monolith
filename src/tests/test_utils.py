@@ -41,6 +41,32 @@ class TestUtils:
         assert utils.clear_nulls(general_data) == expected_data
 
     # ----------------------------------------------------------------------------------------------
+    #   filter_data() function
+    # ----------------------------------------------------------------------------------------------
+    def test_filter_data__general_case(self, general_data: dict) -> None:
+        expected_data = {'some_key': 'some_value', 321: None}
+
+        assert utils.filter_data(data=general_data, keep=['some_key', 321]) == expected_data
+
+    def test_filter_data__inexistent_keep(self, general_data: dict) -> None:
+        expected_data = {'some_key': 'some_value', 321: None}
+
+        assert utils.filter_data(
+            data=general_data,
+             keep=['inexistent', 'some_key', 321]
+        ) == expected_data
+
+    def test_filter_data__keep_none(self, general_data: dict) -> None:
+        expected_data = {}
+
+        assert utils.filter_data(data=general_data, keep=[]) == expected_data
+
+    def test_filter_data__empty_data(self) -> None:
+        expected_data = {}
+
+        assert utils.filter_data(data={}, keep=['some_key', 321]) == expected_data
+
+    # ----------------------------------------------------------------------------------------------
     #   calc_hash() function
     # ----------------------------------------------------------------------------------------------
     def test_calc_hash__general_case(
@@ -92,7 +118,7 @@ class TestUtils:
 
         token_payload = jwt.decode(
             token,
-            key=config.ACCESS_TOKEN_SECRET_KEY,
+            key=config.ACCESS_TOKEN_SECRET_KEY or '',
             algorithms=[config.TOKEN_ALGORITHM]
         )
 
@@ -108,7 +134,7 @@ class TestUtils:
         with pytest.raises(ExpiredSignatureError):
             jwt.decode(
                 token,
-                key=config.ACCESS_TOKEN_SECRET_KEY,
+                key=config.ACCESS_TOKEN_SECRET_KEY or '',
                 algorithms=[config.TOKEN_ALGORITHM]
             )
 
@@ -122,18 +148,18 @@ class TestUtils:
         with pytest.raises(JWTError):
             jwt.decode(
                 token,
-                key=config.ACCESS_TOKEN_SECRET_KEY,
+                key=config.ACCESS_TOKEN_SECRET_KEY or '',
                 algorithms=[config.TOKEN_ALGORITHM]
             )
 
     def test_create_token__no_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        test_payload = {}
+        test_payload: dict = {}
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value=None)
         with pytest.raises(InvalidAccesTokenKeyError):
             utils.create_token(payload=test_payload, expiration_hours=1.0)
 
     def test_create_token__invalid_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        test_payload = {}
+        test_payload: dict = {}
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value='')
         with pytest.raises(InvalidAccesTokenKeyError):
             utils.create_token(payload=test_payload, expiration_hours=1.0)

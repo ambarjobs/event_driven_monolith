@@ -17,10 +17,13 @@ from exceptions import InvalidAccesTokenKeyError
 # --------------------------------------------------------------------------------------------------
 #   Json data manipulation
 # --------------------------------------------------------------------------------------------------
-def clear_nulls(data: dict[str, Any]) -> dict:
+def clear_nulls(data: dict) -> dict:
     """Return data removing fields with value `None`."""
     return {key: value for key, value in data.items() if value is not None}
 
+def filter_data(data: dict, keep: list[str]) -> dict:
+    """Return data filtering keys not in `keep`."""
+    return {key: value for key, value in data.items() if key in keep}
 
 # --------------------------------------------------------------------------------------------------
 #   Hashing

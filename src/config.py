@@ -2,6 +2,14 @@
 # FastAPI configuration file.
 ####################################################################################################
 import os
+import sys
+
+# --------------------------------------------------------------------------------------------------
+#  Testing
+# --------------------------------------------------------------------------------------------------
+IN_TEST = 'pytest' in sys.modules
+
+TEST_PREFIX = 'test'
 
 # --------------------------------------------------------------------------------------------------
 #  Database
@@ -11,9 +19,12 @@ db_host = 'couchdb'
 db_port = 5984
 DB_URL = f'{db_protocol}://{db_host}:{db_port}'
 
-USER_CREDENTIALS_DB_NAME = 'user-credentials'
-USER_INFO_DB_NAME = 'user-info'
+# Use prefixed database names when testing.
+DB_PREFIX = f'{TEST_PREFIX}-' if IN_TEST else ''
 
+USER_CREDENTIALS_DB_NAME = f'{DB_PREFIX}user-credentials'
+USER_INFO_DB_NAME = f'{DB_PREFIX}user-info'
+EMAIL_CONFIRMATION_DB_NAME = f'{DB_PREFIX}email-confirmation'
 
 # --------------------------------------------------------------------------------------------------
 #  Tokens
@@ -30,12 +41,9 @@ EMAIL_VALIDATION_TIMEOUT_HOURS = 24
 
 
 # --------------------------------------------------------------------------------------------------
-#  Testing
-# --------------------------------------------------------------------------------------------------
-TEST_PREFIX = 'test'
-
-# --------------------------------------------------------------------------------------------------
 #  RabbitMQ
 # --------------------------------------------------------------------------------------------------
 RABBIT_HOST = 'rabbitmq'
 RABBIT_PORT = 5672
+RABBIT_HEARTBEAT_TIMEOUT = 6 * 60
+RABBIT_BLOCKED_CONNECTION_TIMEOUT = 3 * 60

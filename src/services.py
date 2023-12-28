@@ -6,8 +6,11 @@ from typing import Any
 
 import httpx
 from fastapi import status
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.spec import Basic, BasicProperties
 
 import config
+import pubsub as ps
 import schemas as sch
 import utils
 from database import db
@@ -47,6 +50,10 @@ def user_is_logged_in(db_user_credentials: dict[str, Any]) -> bool:
 # ==================================================================================================
 #   Services
 # ==================================================================================================
+
+# --------------------------------------------------------------------------------------------------
+#   Sign in
+# --------------------------------------------------------------------------------------------------
 def user_sign_in(
     credentials: sch.UserCredentials,
     user_info: sch.UserInfo,
@@ -80,6 +87,14 @@ def user_sign_in(
                 hash_=hash_,
                 user_info=user_info,
             )
+
+            pub_sub = ps.PubSub()
+            message = sch.EmailConfirmationUserInfo(
+                id=credentials.id,
+                name=user_info.name
+            ).model_dump_json()
+            pub_sub.publish(topic='user-signed-in', message=message)
+
             return successful_sign_in_status.model_dump(exclude_unset=True)
 
         user_already_signed_in_status.details.data = {'version': version}
@@ -87,6 +102,9 @@ def user_sign_in(
     except httpx.HTTPStatusError as err:
         return http_error_status(error=err)
 
+# --------------------------------------------------------------------------------------------------
+#   Log in
+# --------------------------------------------------------------------------------------------------
 def authentication(credentials: sch.UserCredentials) -> dict[str, Any]:
     """User login service."""
     try:
@@ -153,15 +171,64 @@ def authentication(credentials: sch.UserCredentials) -> dict[str, Any]:
 
         payload = {'sub': credentials.id}
         access_token = utils.create_token(payload=payload)
-        db.update_document(
+        db.upsert_document(
             database_name=config.USER_CREDENTIALS_DB_NAME,
             document_id=credentials.id,
-            fields_to_change={
-                'last_login': datetime.now(tz=UTC).isoformat(),
-            }
+            fields={'last_login': datetime.now(tz=UTC).isoformat()}
         )
 
         successful_logged_in_status.details.data = {'token': access_token}
         return successful_logged_in_status.model_dump(exclude_unset=True)
     except httpx.HTTPStatusError as err:
         return http_error_status(error=err)
+
+# --------------------------------------------------------------------------------------------------
+#   Message delivery
+# --------------------------------------------------------------------------------------------------
+def stdout_message_delivery(message: str) -> None:
+    print(f'\n################## Sending:\n{message}\n', flush=True)
+
+# --------------------------------------------------------------------------------------------------
+#   Email confirmation
+# --------------------------------------------------------------------------------------------------
+def email_confirmation(
+    channel: BlockingChannel,
+    method: Basic.Deliver,
+    properties: BasicProperties,
+    body: bytes
+) -> None:
+    """Email confirmation service."""
+    user_info = sch.EmailConfirmationUserInfo.model_validate_json(body)
+    token = utils.create_token(
+        payload=user_info.model_dump(),
+        expiration_hours=config.EMAIL_VALIDATION_TIMEOUT_HOURS
+    )
+
+    db.upsert_document(
+        database_name=config.EMAIL_CONFIRMATION_DB_NAME,
+        document_id=user_info.id,
+        fields={'email_confirmation_token': token}
+    )
+
+    email_info = sch.EmailConfirmationInfo(
+        user_info=user_info,
+        validation_expiration_period=config.EMAIL_VALIDATION_TIMEOUT_HOURS,
+        email_confirmation_token=token,
+    )
+
+    message = f'''Dear {email_info.user_info.name}, thank you for subscribing this PoC.
+
+    To confirm you subscription, please access the following link:
+    http://localhost/confirm-subsc/{email_info.email_confirmation_token}
+
+    You have {email_info.validation_expiration_period} hours to confirm your subscription.
+
+    Regards,
+    PoC team.
+    '''
+    stdout_message_delivery(message=message)
+
+    # On tests the is no channel or method because the parameters are mocked
+    if channel:
+        # Acknowledging the message.
+        channel.basic_ack(delivery_tag=method.delivery_tag)

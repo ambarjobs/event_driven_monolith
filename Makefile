@@ -81,7 +81,7 @@ status: ## Show status of the containers.
 # --------------------------------------------------------------------------------------------------
 .PHONY: logs service
 logs: ## Show status of the containers.
-	@docker-compose logs -f ${service}
+	@docker-compose logs -t -f ${service}
 
 # ==================================================================================================
 #  App commands

@@ -1,11 +1,10 @@
 # ==================================================================================================
 #  Pubsub module tests
 # ==================================================================================================
+import threading as thrd
+
 import config
 import pubsub as ps
-
-config.USER_CREDENTIALS_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_CREDENTIALS_DB_NAME}'
-config.USER_INFO_DB_NAME = f'{config.TEST_PREFIX}-{config.USER_INFO_DB_NAME}'
 
 
 class TestPubSub:
@@ -45,7 +44,7 @@ class TestPubSub:
         self,
         pub_sub: ps.PubSub,
         consumer_callback: ps.ConsumerCallback
-    ):
+    ) -> None:
         test_topic = 'test-topic'
         try:
             consumer = pub_sub.consumer_factory(topic=test_topic, callback=consumer_callback)
@@ -54,6 +53,40 @@ class TestPubSub:
         finally:
             consumer.channel.exchange_delete(test_topic)
 
+    def test_consumer_called__general_case(self, capsys) -> None:
+
+        def start_consumer_thread(
+            consumer: ps.Consumer
+        ) -> None:
+            """Test thread to start the consumer."""
+            consumer.start()
+
+        def callback_test_func(channel, method, properties, body: bytes) -> None:
+            """Test consumer callback function."""
+            print(body.decode(), end='', flush=True)
+
+        test_topic = 'test-topic'
+        test_message = 'This is the test message!!!'
+
+        pub_sub = ps.PubSub()
+        consumer = pub_sub.consumer_factory(
+        topic=test_topic,
+        callback=callback_test_func
+        )
+
+        thread = thrd.Thread(
+            target=start_consumer_thread,
+            kwargs={'consumer': consumer},
+            daemon=True,
+            )
+        thread.start()
+        thread.join(timeout=0.0)
+
+        pub_sub = ps.PubSub()
+        pub_sub.publish(topic=test_topic, message=test_message)
+        captured = capsys.readouterr()
+
+        assert captured.out == test_message
 
 # ==================================================================================================
 #   Test helpers to copy and paste on python shells to do end-to-end PubSub tests.

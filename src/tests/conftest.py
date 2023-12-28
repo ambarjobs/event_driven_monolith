@@ -4,6 +4,8 @@
 from datetime import datetime, UTC
 
 import pytest
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.spec import Basic, BasicProperties
 from pydantic import SecretStr
 
 import config
@@ -136,14 +138,39 @@ def user_id() -> str:
 # --------------------------------------------------------------------------------------------------
 @pytest.fixture
 def pub_sub() -> ps.PubSub:
-    """Test PubSub object."""
+    """Test PubSub instance."""
     pub_sub = ps.PubSub()
     yield pub_sub
     pub_sub.connection.close()
 
 @pytest.fixture
 def another_pub_sub() -> ps.PubSub:
-    """Test PubSub object."""
+    """Another test PubSub instance."""
     pub_sub = ps.PubSub()
     yield pub_sub
     pub_sub.connection.close()
+
+@pytest.fixture
+def consumer_callback() -> ps.ConsumerCallback:
+    """Test Consumer callback funtion factory."""
+    def callback_function(
+        channel: BlockingChannel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes
+    ) -> None:
+        pass
+    return callback_function
+
+@pytest.fixture
+def callback_null_params() -> dict[str, None]:
+    """Null parameters for consumer callback functions"""
+    return {'channel': None, 'method': None, 'properties': None}
+
+# @pytest.fixture
+# def callback_parameters() -> dict[str, Any]:
+#     """Mocked callback function parameters"""
+#     pub_sub = ps.PubSub()
+#     mock_method = pub_sub.channel.basic_consume().method
+#     yield {'channel': pub_sub.channel, 'method': mock_method, 'properties': None}
+#     pub_sub.connection.close()

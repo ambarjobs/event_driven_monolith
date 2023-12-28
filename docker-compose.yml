@@ -13,6 +13,12 @@ services:
     build:
       context: .
       dockerfile: ${PWD}/dockerfiles/CouchDBDockerfile
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5984/']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
     ports:
       - "5984:5984"
     networks:
@@ -21,6 +27,12 @@ services:
   rabbitmq:
     container_name: evt-drv-rabbitmq
     image: rabbitmq:3.12-management
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_running']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -30,8 +42,11 @@ services:
   app:
     container_name: evt-drv-app
     depends_on:
-      - rabbitmq
-      - couchdb
+      rabbitmq:
+        condition: service_healthy
+      couchdb:
+        # condition: service_healthy
+        condition: service_healthy
     links:
       - rabbitmq
       - couchdb
