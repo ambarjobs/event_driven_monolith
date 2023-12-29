@@ -1,7 +1,6 @@
 # ==================================================================================================
 #   CouchDB database
 # ==================================================================================================
-
 import os
 from typing import Any, NamedTuple
 
@@ -11,6 +10,7 @@ from fastapi import status
 import config
 import schemas as sch
 import utils
+from config import logging as log
 from exceptions import InvalidCouchDBCredentialError
 
 
@@ -50,6 +50,7 @@ class CouchDb:
         user = os.environ.get(user_env_var)
         password = os.environ.get(pwd_env_var)
         if (not user) or (not password):
+            log.error('Invalid CouchDB credentials')
             raise InvalidCouchDBCredentialError
         return DbCredentials(user=user, password=password)
 
@@ -60,6 +61,7 @@ class CouchDb:
         # If a database already exists it'll generate a `status_code` of 412, but that isn't
         # significative here because we'll ignore existing databases.
         if response.status_code != status.HTTP_412_PRECONDITION_FAILED:
+            log.error(f'Could not create database: {response}')
             response.raise_for_status()
 
     def set_app_permissions_on_database(self, database_name: str) -> None:

@@ -11,6 +11,7 @@ from pydantic import SecretStr
 import core
 import schemas as sch
 import services as srv
+from config import logging as log
 from core import oauth2_scheme
 
 
@@ -39,12 +40,16 @@ def signin(
     result = srv.user_sign_in(credentials=credentials, user_info=user_info)
     result_sch = sch.ServiceStatus(**result)
     if result_sch.status == 'user_already_signed_in':
+        log.warning(f'User already signed in: {credentials.id}')
         return JSONResponse(content=result, status_code=status.HTTP_409_CONFLICT)
     if result_sch.error and result_sch.status == 'http_error':
+        error_code = result_sch.details.error_code
+        log.error(f'Signin endpoint error: {error_code}')
         return JSONResponse(
             content=result,
-            status_code=result_sch.details.error_code or 500
+            status_code=error_code or 500
         )
+    log.info(f'User signed in: {credentials.id}')
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
 
@@ -58,13 +63,17 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
             sch.ServiceStatus(status='email_not_validated') |
             sch.ServiceStatus(status='user_already_signed_in')
         ):
+            log.warning(f'Login non authorized: {credentials.id}')
             return JSONResponse(content=login_data, status_code=status.HTTP_401_UNAUTHORIZED)
         case sch.ServiceStatus(status='http_error'):
+            error_code = login_status.details.error_code
+            log.error(f'Login endpoint error: {error_code}')
             return JSONResponse(
                 content=login_data,
-                status_code=login_status.details.error_code or 500
+                status_code=error_code or 500
             )
         case _:
+            log.info(f'User logged in: {credentials.id}')
             return JSONResponse(content=login_data, status_code=status.HTTP_200_OK)
 
 

@@ -8,6 +8,7 @@ from fastapi.security import OAuth2PasswordBearer
 import config
 import services as srv
 import pubsub as ps
+from config import logging as log
 from database import DatabaseInfo, db, Index
 
 
@@ -55,10 +56,12 @@ def init_app_databases() -> None:
         for db_info in APP_DATABASES_INFO:
             db.create_database_indexes(database_info=db_info)
     except httpx.HTTPError as err:
-        print(f'Error trying to initialize the databases: {err}')
+        error_msg = f'Error trying to initialize the databases: {err}'
+        print(error_msg)
         exit(-1)
     except httpx.InvalidURL as err:
-        print(f'Invalid database URL: {err}')
+        error_msg = f'Invalid database URL: {err}'
+        print(error_msg)
         exit(-1)
 
 
@@ -80,6 +83,7 @@ def start_consumers(subscriptions: list[ps.Subscription]) -> None:
             daemon=True,
             )
         thread.start()
+        log.info(f'Starting consumer thread: {thread.native_id}')
         thread.join(timeout=0.0)
 
 

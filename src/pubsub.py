@@ -15,6 +15,7 @@ from pika.exceptions import (
 from pika.spec import Basic, BasicProperties
 
 import config
+from config import logging as log
 from exceptions import MessagePublishingConfirmationError
 
 
@@ -43,8 +44,10 @@ class Consumer:
             try:
                 self.channel.start_consuming()
             except (AMQPChannelError, ConnectionClosedByBroker) as err:
+                log.error(f'Error inside consumer: {err}')
                 raise err
-            except AMQPConnectionError:
+            except AMQPConnectionError as err:
+                log.warning(f'Recoverable error inside consumer: {err}')
                 continue
 
 @dataclass
@@ -84,9 +87,9 @@ class PubSub:
         try:
             self.channel.basic_publish(exchange=topic, routing_key='', body=message, mandatory=True)
         except UnroutableError as err:
-            raise MessagePublishingConfirmationError(
-                f'The sending of an event message could not be confirmed: {err}'
-            )
+            error_msg = f'The sending of an event message could not be confirmed: {err}'
+            log.error(error_msg)
+            raise MessagePublishingConfirmationError(error_msg)
         self.connection.close()
 
     def consumer_factory(self, topic: str, callback: ConsumerCallback) -> Consumer:
