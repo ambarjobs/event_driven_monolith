@@ -23,8 +23,8 @@ ConsumerCallback = Callable[[BlockingChannel, Basic.Deliver, BasicProperties, by
 
 class Subscription(NamedTuple):
     """Consumer service subscription to a topic (rabitmq exchange)."""
-    consumer_service: ConsumerCallback
     topic_name: str
+    consumer_service_name: str
 
 
 @dataclass

@@ -15,8 +15,8 @@ from config import logging as log
 from core import oauth2_scheme
 
 
-core.init_app_databases()
-core.start_consumers(subscriptions=core.APP_CONSUMERS)
+core.init_app_databases(core.APP_DATABASES_INFO)
+core.start_consumers(subscriptions=srv.CONSUMERS_SUBSCRIPTIONS)
 
 app = FastAPI()
 

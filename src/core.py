@@ -6,10 +6,11 @@ import threading as thrd
 from fastapi.security import OAuth2PasswordBearer
 
 import config
-import services as srv
 import pubsub as ps
+import services as srv
 from config import logging as log
 from database import DatabaseInfo, db, Index
+from exceptions import ConsumerServiceNotFoundError
 
 
 # ==================================================================================================
@@ -39,21 +40,13 @@ APP_DATABASES_INFO = [
     )
 ]
 
-# --------------------------------------------------------------------------------------------------
-#   PubSub
-# --------------------------------------------------------------------------------------------------
-APP_CONSUMERS = [
-    ps.Subscription(consumer_service=srv.email_confirmation, topic_name='user-signed-in')
-]
-
-
 # ==================================================================================================
 #   Initialization
 # ==================================================================================================
-def init_app_databases() -> None:
+def init_app_databases(databases_info: list[DatabaseInfo]) -> None:
     try:
-        db.init_databases(database_names=[info.name for info in APP_DATABASES_INFO])
-        for db_info in APP_DATABASES_INFO:
+        db.init_databases(database_names=[info.name for info in databases_info])
+        for db_info in databases_info:
             db.create_database_indexes(database_info=db_info)
     except httpx.HTTPError as err:
         error_msg = f'Error trying to initialize the databases: {err}'
@@ -67,9 +60,16 @@ def init_app_databases() -> None:
 
 def start_consumer_thread(pub_sub: ps.PubSub, subscription: ps.Subscription) -> None:
     """Thread to start a consumer."""
+    try:
+        callback = getattr(srv, subscription.consumer_service_name)
+    except AttributeError:
+        raise ConsumerServiceNotFoundError(
+            f'The consumer service function [{subscription.consumer_service_name}] '
+            'could not be found.'
+        )
     consumer = pub_sub.consumer_factory(
         topic=subscription.topic_name,
-        callback=subscription.consumer_service
+        callback=callback
     )
     consumer.start()
 

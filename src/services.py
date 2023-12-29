@@ -14,7 +14,17 @@ import pubsub as ps
 import schemas as sch
 import utils
 from database import db
+from exceptions import ProducerNotRegisteredError
 
+
+CONSUMERS_SUBSCRIPTIONS = (
+    ps.Subscription(topic_name='user-signed-in', consumer_service_name='email_confirmation'),
+)
+
+PRODUCERS_NAMES = (
+    'user_sign_in',
+)
+REGISTERED_PRODUCERS = {producer_name: ps.PubSub() for producer_name in PRODUCERS_NAMES}
 
 # --------------------------------------------------------------------------------------------------
 #   Normalized HTTP error status
@@ -34,7 +44,7 @@ def http_error_status(error: httpx.HTTPStatusError):
 
 
 # ==================================================================================================
-#   Specific utils
+#   Generic functions
 # ==================================================================================================
 def user_is_logged_in(db_user_credentials: dict[str, Any]) -> bool:
     """Check if user is logged in."""
@@ -46,6 +56,14 @@ def user_is_logged_in(db_user_credentials: dict[str, Any]) -> bool:
         this_moment - datetime.fromisoformat(last_login) <
         timedelta(hours=config.TOKEN_DEFAULT_EXPIRATION_HOURS)
     )
+
+
+def get_producer(producer_name: str) -> ps.PubSub:
+    """Get the PubSub instance of a registered producer."""
+    producer = REGISTERED_PRODUCERS.get(producer_name)
+    if not producer:
+        raise ProducerNotRegisteredError
+    return producer
 
 # ==================================================================================================
 #   Services
@@ -223,7 +241,7 @@ def email_confirmation(
 
     You have {email_info.validation_expiration_period} hours to confirm your subscription.
 
-    Regards,
+    Best regards,
     PoC team.
     '''
     stdout_message_delivery(message=message)
