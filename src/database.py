@@ -2,6 +2,7 @@
 #   CouchDB database
 # ==================================================================================================
 import os
+from collections.abc import Sequence
 from typing import Any, NamedTuple
 
 import httpx
@@ -22,13 +23,13 @@ class DbCredentials(NamedTuple):
 class Index(NamedTuple):
     """Databse index structure."""
     name: str
-    fields: list[str]
+    fields: Sequence[str]
 
 
 class DatabaseInfo(NamedTuple):
     """Database information structure."""
     name: str
-    indexes: list[Index]
+    indexes: Sequence[Index]
 
 
 class CouchDb:
@@ -81,7 +82,7 @@ class CouchDb:
             json=BODY,
         ).raise_for_status()
 
-    def init_databases(self, database_names: list[str]) -> None:
+    def init_databases(self, database_names: Sequence[str]) -> None:
         """Create databases if not created."""
         for database_name in database_names:
             self.create_database(database_name=database_name)
@@ -136,7 +137,7 @@ class CouchDb:
         self,
         database_name: str,
         document_id: str,
-        fields: list[str] | None = None,
+        fields: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Get information about a document by `id` choosing it's `fields`."""
         fields = fields or []

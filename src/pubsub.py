@@ -2,7 +2,8 @@
 #  Application Pub / Sub services
 # ==================================================================================================
 from dataclasses import dataclass
-from typing import Callable, NamedTuple
+from collections.abc import Callable, Sequence
+from typing import NamedTuple
 
 import pika
 from pika.adapters.blocking_connection import BlockingChannel
@@ -54,7 +55,7 @@ class Consumer:
 class PubSub:
     host: str = config.RABBIT_HOST
     port: int = config.RABBIT_PORT
-    topics: list[str] | None = None
+    topics: Sequence[str] | None = None
 
     def __post_init__(self) -> None:
         self.topics = self.topics or []

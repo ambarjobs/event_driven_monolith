@@ -62,7 +62,7 @@ def get_producer(producer_name: str) -> ps.PubSub:
     """Get the PubSub instance of a registered producer."""
     producer = REGISTERED_PRODUCERS.get(producer_name)
     if not producer:
-        raise ProducerNotRegisteredError
+        raise ProducerNotRegisteredError(f'Producer [{producer_name}] not registered.')
     return producer
 
 # ==================================================================================================
@@ -106,12 +106,12 @@ def user_sign_in(
                 user_info=user_info,
             )
 
-            pub_sub = ps.PubSub()
+            sign_in_producer = get_producer('user_sign_in')
             message = sch.EmailConfirmationUserInfo(
                 id=credentials.id,
                 name=user_info.name
             ).model_dump_json()
-            pub_sub.publish(topic='user-signed-in', message=message)
+            sign_in_producer.publish(topic='user-signed-in', message=message)
 
             return successful_sign_in_status.model_dump(exclude_unset=True)
 

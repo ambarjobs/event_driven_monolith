@@ -1,6 +1,7 @@
 # ==================================================================================================
 #  Tests helpers
 # ==================================================================================================
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -73,7 +74,7 @@ class Db:
         )
         return response
 
-    def create_indexes(self, indexes: list[Index]) -> None:
+    def create_indexes(self, indexes: Sequence[Index]) -> None:
         """Create database indexes."""
         for index in indexes:
             body = {

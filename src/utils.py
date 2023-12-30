@@ -2,9 +2,10 @@
 #  Application utility functions
 # ==================================================================================================
 from copy import deepcopy
+from collections.abc import Generator, Mapping, Sequence
 from datetime import datetime, timedelta, UTC
 from functools import reduce
-from typing import Any, Generator, Sequence
+from typing import Any
 
 import bcrypt
 from jose import jwt
@@ -21,7 +22,7 @@ def clear_nulls(data: dict) -> dict:
     """Return data removing fields with value `None`."""
     return {key: value for key, value in data.items() if value is not None}
 
-def filter_data(data: dict, keep: list[str]) -> dict:
+def filter_data(data: dict, keep: Sequence[str]) -> dict:
     """Return data filtering keys not in `keep`."""
     return {key: value for key, value in data.items() if key in keep}
 
@@ -104,7 +105,7 @@ def deep_traversal(obj, *keys):
 # --------------------------------------------------------------------------------------------------
 #   List manipulation
 # --------------------------------------------------------------------------------------------------
-def first(seq: Sequence | Generator | None) -> Any | None:
+def first(seq: Sequence | Generator | Mapping | None) -> Any | None:
     """Return the first element of a sequence or `None` for empty sequences"""
     first, *_ = seq if seq else [None]
     return first

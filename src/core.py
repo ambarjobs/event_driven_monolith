@@ -1,6 +1,8 @@
 # ==================================================================================================
 #  Application core data structures and functions
 # ==================================================================================================
+from collections.abc import Sequence
+
 import httpx
 import threading as thrd
 from fastapi.security import OAuth2PasswordBearer
@@ -43,7 +45,7 @@ APP_DATABASES_INFO = [
 # ==================================================================================================
 #   Initialization
 # ==================================================================================================
-def init_app_databases(databases_info: list[DatabaseInfo]) -> None:
+def init_app_databases(databases_info: Sequence[DatabaseInfo]) -> None:
     try:
         db.init_databases(database_names=[info.name for info in databases_info])
         for db_info in databases_info:
@@ -74,7 +76,7 @@ def start_consumer_thread(pub_sub: ps.PubSub, subscription: ps.Subscription) -> 
     consumer.start()
 
 
-def start_consumers(subscriptions: list[ps.Subscription]) -> None:
+def start_consumers(subscriptions: Sequence[ps.Subscription]) -> None:
     for subscription in subscriptions:
         pub_sub = ps.PubSub()
         thread = thrd.Thread(
