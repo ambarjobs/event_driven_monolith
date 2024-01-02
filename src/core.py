@@ -65,10 +65,7 @@ def start_consumer_thread(pub_sub: ps.PubSub, subscription: ps.Subscription) -> 
     try:
         callback = getattr(srv, subscription.consumer_service_name)
     except AttributeError:
-        raise ConsumerServiceNotFoundError(
-            f'The consumer service function [{subscription.consumer_service_name}] '
-            'could not be found.'
-        )
+        exit(-1)
     consumer = pub_sub.consumer_factory(
         topic=subscription.topic_name,
         callback=callback
@@ -86,7 +83,12 @@ def start_consumers(subscriptions: Sequence[ps.Subscription]) -> None:
             )
         thread.start()
         log.info(f'Starting consumer thread: {thread.native_id}')
-        thread.join(timeout=0.0)
+        thread.join(timeout=0.01)
+        if not thread.is_alive():
+            raise ConsumerServiceNotFoundError(
+                f'The consumer service function [{subscription.consumer_service_name}] '
+                'could not be found.'
+        )
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")

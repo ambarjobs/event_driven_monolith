@@ -2,7 +2,7 @@
 #  Core module tests
 # ==================================================================================================
 import httpx
-# import threading
+import pytest
 from unittest import mock
 
 import config
@@ -10,6 +10,7 @@ import core
 import pubsub as ps
 import utils
 from database import DatabaseInfo, db, Index
+from exceptions import ConsumerServiceNotFoundError
 from tests.helpers import access_database
 
 class TestCore:
@@ -64,6 +65,7 @@ class TestCore:
         subscriptions = (test_subscription,)
 
         with mock.patch(target='threading.Thread') as mock_thread:
+            mock_thread.return_value().is_alive.return_value = True
             with mock.patch(target='core.start_consumer_thread') as mock_spawn_thread:
                 with mock.patch(target='pubsub.PubSub') as mock_pub_sub:
                     core.start_consumers(subscriptions=subscriptions)
@@ -76,11 +78,21 @@ class TestCore:
                             daemon=True,
                     )
 
-        with mock.patch(target='core.start_consumer_thread') as mock_spawn_thread:
-            with mock.patch(target='pubsub.PubSub') as mock_pub_sub:
-                core.start_consumers(subscriptions=subscriptions)
+        with mock.patch(target='threading.Thread.is_alive') as mock_alive:
+            mock_alive.return_value = True
+            with mock.patch(target='core.start_consumer_thread') as mock_spawn_thread:
+                with mock.patch(target='pubsub.PubSub') as mock_pub_sub:
+                    core.start_consumers(subscriptions=subscriptions)
 
-                mock_spawn_thread.assert_called_with(
-                    pub_sub=mock_pub_sub(),
-                    subscription=test_subscription
-                )
+                    mock_spawn_thread.assert_called_with(
+                        pub_sub=mock_pub_sub(),
+                        subscription=test_subscription
+                    )
+
+    @pytest.mark.filterwarnings('ignore::pytest.PytestUnhandledThreadExceptionWarning')
+    def test_start_consumers__inxistent_consumer_service(self) -> None:
+        test_subscription = ps.Subscription(topic_name='test_topic', consumer_service_name='inexistent')
+        subscriptions = (test_subscription,)
+
+        with pytest.raises(ConsumerServiceNotFoundError):
+            core.start_consumers(subscriptions=subscriptions)

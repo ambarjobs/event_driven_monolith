@@ -460,7 +460,7 @@ class TestServices:
         assert 'email_confirmation_token' in email_confirmation_data
         assert email_confirmation_data['email_confirmation_token']
 
-    def test_email_confirmation__invalid_event(self, callback_null_params) -> None:
+    def test_email_confirmation__invalid_event_format(self, callback_null_params) -> None:
         test_user_info = {'invalid_field': 'invalid'}
         serialized_user_info = json.dumps(test_user_info)
 

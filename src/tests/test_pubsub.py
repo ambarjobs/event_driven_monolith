@@ -3,8 +3,11 @@
 # ==================================================================================================
 import threading as thrd
 
+import pytest
+
 import config
 import pubsub as ps
+from exceptions import MessagePublishingConfirmationError
 
 
 class TestPubSub:
@@ -53,7 +56,10 @@ class TestPubSub:
         finally:
             consumer.channel.exchange_delete(test_topic)
 
-    def test_consumer_called__general_case(self, capsys) -> None:
+    # ==============================================================================================
+    #   Consumer / Producer
+    # ==============================================================================================
+    def test_consumer_producer__general_case(self, capsys) -> None:
 
         def start_consumer_thread(
             consumer: ps.Consumer
@@ -87,6 +93,41 @@ class TestPubSub:
         captured = capsys.readouterr()
 
         assert captured.out == test_message
+
+    def test_consumer_producer__subscription_not_confirmed(self, capsys) -> None:
+
+        def start_consumer_thread(
+            consumer: ps.Consumer
+        ) -> None:
+            """Test thread to start the consumer."""
+            consumer.start()
+
+        def callback_test_func(channel, method, properties, body: bytes) -> None:
+            """Test consumer callback function."""
+            print(body.decode(), end='', flush=True)
+
+        consumer_topic = 'test-topic'
+        producer_topic = 'inexistent'
+        test_message = 'This is the test message!!!'
+
+        pub_sub = ps.PubSub()
+        consumer = pub_sub.consumer_factory(
+        topic=consumer_topic,
+        callback=callback_test_func
+        )
+
+        thread = thrd.Thread(
+            target=start_consumer_thread,
+            kwargs={'consumer': consumer},
+            daemon=True,
+            )
+        thread.start()
+        thread.join(timeout=0.0)
+
+        pub_sub = ps.PubSub()
+        with pytest.raises(MessagePublishingConfirmationError):
+            pub_sub.publish(topic=producer_topic, message=test_message)
+
 
 # ==================================================================================================
 #   Test helpers to copy and paste on python shells to do end-to-end PubSub tests.
