@@ -57,6 +57,49 @@ class TestPubSub:
             consumer.channel.exchange_delete(test_topic)
 
     # ==============================================================================================
+    #   Producer
+    # ==============================================================================================
+    def test_publish__conection_reutilization(self) -> None:
+
+        def start_consumer_thread(
+            consumer: ps.Consumer
+        ) -> None:
+            """Test thread to start the consumer."""
+            consumer.start()
+
+        def callback_test_func(channel, method, properties, body: bytes) -> None:
+            """Test consumer callback function."""
+            pass
+
+        test_topic = 'test-topic'
+        test_message = 'This is the test message!!!'
+
+        pub_sub = ps.PubSub()
+        consumer = pub_sub.consumer_factory(
+        topic=test_topic,
+        callback=callback_test_func
+        )
+
+        thread = thrd.Thread(
+            target=start_consumer_thread,
+            kwargs={'consumer': consumer},
+            daemon=True,
+            )
+        thread.start()
+        thread.join(timeout=0.01)
+
+        assert thread.is_alive()
+
+        pub_sub = ps.PubSub()
+        pub_sub.publish(topic=test_topic, message=test_message)
+
+        pub_sub.publish(topic=test_topic, message=test_message)
+
+        assert pub_sub.connection.is_open
+
+        pub_sub.connection.close()
+
+    # ==============================================================================================
     #   Consumer / Producer
     # ==============================================================================================
     def test_consumer_producer__general_case(self, capsys) -> None:
@@ -86,15 +129,19 @@ class TestPubSub:
             daemon=True,
             )
         thread.start()
-        thread.join(timeout=0.0)
+        thread.join(timeout=0.01)
+
+        assert thread.is_alive()
 
         pub_sub = ps.PubSub()
         pub_sub.publish(topic=test_topic, message=test_message)
+        pub_sub.connection.close()
+
         captured = capsys.readouterr()
 
         assert captured.out == test_message
 
-    def test_consumer_producer__subscription_not_confirmed(self, capsys) -> None:
+    def test_consumer_producer__subscription_not_confirmed(self) -> None:
 
         def start_consumer_thread(
             consumer: ps.Consumer
@@ -127,6 +174,8 @@ class TestPubSub:
         pub_sub = ps.PubSub()
         with pytest.raises(MessagePublishingConfirmationError):
             pub_sub.publish(topic=producer_topic, message=test_message)
+
+        pub_sub.connection.close()
 
 
 # ==================================================================================================

@@ -75,7 +75,8 @@ class PubSub:
     def _create_topic(self, topic: str) -> None:
         """Create a topic if it don't exists."""
         self.channel.exchange_declare(exchange=topic, exchange_type=self.exchange_type)
-        self.channel.confirm_delivery()
+        if not self.channel._delivery_confirmation:  # type: ignore
+            self.channel.confirm_delivery()
 
     def _create_temporary_queue(self) -> str:
         """Create a temporary queue named automatically."""
@@ -91,7 +92,6 @@ class PubSub:
             error_msg = f'The sending of an event message could not be confirmed: {err}'
             log.error(error_msg)
             raise MessagePublishingConfirmationError(error_msg)
-        self.connection.close()
 
     def consumer_factory(self, topic: str, callback: ConsumerCallback) -> Consumer:
         """Returns a Consumer instance to receive topic messages ."""
