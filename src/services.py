@@ -100,10 +100,18 @@ def user_sign_in(
         )
         if version is None:
             hash_ = utils.calc_hash(credentials.password)
-            db.sign_in_user(
-                id=credentials.id,
-                hash_=hash_,
-                user_info=user_info,
+
+            db.upsert_document(
+                database_name=config.USER_CREDENTIALS_DB_NAME,
+                document_id=credentials.id,
+                fields={'hash': hash_}
+            )
+
+            fields = utils.clear_nulls(user_info.model_dump(exclude={'id'}))
+            db.upsert_document(
+                database_name=config.USER_INFO_DB_NAME,
+                document_id=credentials.id,
+                fields=fields
             )
 
             sign_in_producer = get_producer('user_sign_in')

@@ -203,18 +203,5 @@ class CouchDb:
         response_json = response.json() if response else None
         return utils.deep_traversal(response_json, 'rev')
 
-    def sign_in_user(
-        self,
-        id: str,
-        hash_: str,
-        user_info: sch.UserInfo,
-    ) -> None:
-        """Sign in the user."""
-        command_url = f'{self.url}/{config.USER_CREDENTIALS_DB_NAME}/{id}'
-        body = {'hash': hash_}
-        httpx.put(url=command_url, json=body, auth=self.app_credentials).raise_for_status()
-        command_url = f'{self.url}/{config.USER_INFO_DB_NAME}/{id}'
-        body = utils.clear_nulls(user_info.model_dump(exclude={'id'}))
-        httpx.put(url=command_url, json=body, auth=self.app_credentials).raise_for_status()
 
 db = CouchDb()
