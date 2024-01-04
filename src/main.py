@@ -3,8 +3,8 @@
 # ==================================================================================================
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, status
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import SecretStr
 
@@ -34,10 +34,15 @@ def oauth2form_to_credentials(form_data: OAuth2PasswordRequestForm) -> sch.UserC
 @app.post('/signin')
 def signin(
     credentials: sch.UserCredentials,
-    user_info: sch.UserInfo
+    user_info: sch.UserInfo,
+    request: Request,
 ) -> JSONResponse:
     """Sign in endpoint."""
-    sign_in_status = srv.user_sign_in(credentials=credentials, user_info=user_info)
+    sign_in_status = srv.user_sign_in(
+        credentials=credentials,
+        user_info=user_info,
+        base_url=str(request.base_url)
+    )
     match sign_in_status:
         case sch.ServiceStatus(status='user_already_signed_in'):
             log.warning(f'User already signed in: {credentials.id}')
@@ -76,14 +81,15 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
 # ==================================================================================================
 #  Email confirmation
 # ==================================================================================================
-@app.post('confirm-email')
-def confirm_email(token_json: sch.EmailConfirmationToken) -> JSONResponse:
+@app.post('confirm-email-api')
+def confirm_email_api(token_json: sch.EmailConfirmationToken) -> JSONResponse:
+    """Receives email token confirmation through RESTful API."""
     confirmation_status = srv.check_email_confirmation(token=token_json.token)
     token = confirmation_status.details.data['token'] if confirmation_status.details.data else ''
     email = confirmation_status.details.data['email'] if confirmation_status.details.data else ''
     match confirmation_status:
         case (
-            sch.ServiceStatus(status='invalid_token_payload') |
+            sch.ServiceStatus(status='invalid_token') |
             sch.ServiceStatus(status='expired_token')
         ):
             log.error(f'Invalid token: {token}')
@@ -103,7 +109,60 @@ def confirm_email(token_json: sch.EmailConfirmationToken) -> JSONResponse:
             status_code = status.HTTP_200_OK
     return JSONResponse(content=confirmation_status.model_dump(), status_code=status_code)
 
+@app.get('confirm-email')
+def confirm_email(token_json: sch.EmailConfirmationToken, request: Request) -> HTMLResponse:
+    """Receives email token confirmation through an HTML URL."""
+    confirmation_status = srv.check_email_confirmation(token=token_json.token)
+    token = confirmation_status.details.data['token'] if confirmation_status.details.data else ''
+    email = confirmation_status.details.data['email'] if confirmation_status.details.data else ''
 
+    error_msg_template = """Unfortunately an error occurred:</br>{error_msg}"""
+    match confirmation_status:
+        case (
+            sch.ServiceStatus(status='invalid_token') |
+            sch.ServiceStatus(status='expired_token')
+        ):
+            log.error(f'Invalid token: {token}')
+            message = error_msg_template.format(
+                error_msg='The confirmation link is corrupted or expired.'
+            )
+        case sch.ServiceStatus(status='inexistent_token'):
+            log.error(f'Inexistent token: {token}')
+            message = error_msg_template.format(
+                error_msg='There is no sign in corresponding to the confirmation link.'
+            )
+        case sch.ServiceStatus(status='previously_confirmed'):
+            log.warning(f'Email already confirmed: {email}')
+            message = f""" Your email address was confirmed previously. </br>
+            You can just log in on:</br>
+                {request.base_url}/login</br>
+            to access our platform.
+            """
+        case sch.ServiceStatus(status='http_error'):
+            error_code = confirmation_status.details.error_code
+            log.error(f'confirm-mail endpoint error: {error_code}')
+            message = error_msg_template.format(
+                error_msg=f"""Our servers couldm't process your requests (HTTP error: {error_code})<br>
+                Try to click on the link later, if the error persists, contact our support.
+                """
+            )
+        case _:
+            log.info(f'User email confirmed: {email}')
+            message = f""" Thank you for confirm your email. </br>
+            Now you can log in on:</br>
+                {request.base_url}/login</br>
+            to access our platform.
+            """
+    # TODO: Use some template mechanism (like Jinja) to provide a better message template.
+    content = f"""<html>
+        <body>
+            <div>
+                {message}
+            </div>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=content)
 
 
 @app.get('/tst')

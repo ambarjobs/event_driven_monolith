@@ -91,6 +91,30 @@ def this_moment() -> datetime:
     return datetime.now(tz=UTC)
 
 
+@pytest.fixture
+def base_url() -> str:
+    """Provide the base url for testing environment."""
+    return 'http://testserver'
+
+
+@pytest.fixture
+def user_id() -> str:
+    """Test user id."""
+    return f'{config.TEST_PREFIX}@user.id'
+
+
+@pytest.fixture
+def user_name() -> str:
+    """Test user name."""
+    return f'Mr. {config.TEST_PREFIX.capitalize()}'
+
+
+@pytest.fixture
+def another_user_id() -> str:
+    """Another test user id."""
+    return f'{config.TEST_PREFIX}-another@user.id'
+
+
 # --------------------------------------------------------------------------------------------------
 #   Database
 # --------------------------------------------------------------------------------------------------
@@ -118,26 +142,6 @@ def user_credentials(password) -> sch.UserCredentials:
         password=password
     )
 
-@pytest.fixture
-def user_info() -> sch.UserInfo:
-    """Test user information."""
-    return sch.UserInfo(
-        id=f'{config.TEST_PREFIX}@user.id',
-        name=f'{config.TEST_PREFIX.title()} User Name',
-        address=f'{config.TEST_PREFIX.title()} Streeet, 123'
-    )
-
-@pytest.fixture
-def user_id() -> str:
-    """Test user id."""
-    return f'{config.TEST_PREFIX}@user.id'
-
-
-@pytest.fixture
-def another_user_id() -> str:
-    """Another test user id."""
-    return f'{config.TEST_PREFIX}-another@user.id'
-
 
 # --------------------------------------------------------------------------------------------------
 #   Pubsub
@@ -149,12 +153,14 @@ def pub_sub() -> ps.PubSub:
     yield pub_sub
     pub_sub.connection.close()
 
+
 @pytest.fixture
 def another_pub_sub() -> ps.PubSub:
     """Another test PubSub instance."""
     pub_sub = ps.PubSub()
     yield pub_sub
     pub_sub.connection.close()
+
 
 @pytest.fixture
 def consumer_callback() -> ps.ConsumerCallback:
@@ -168,10 +174,12 @@ def consumer_callback() -> ps.ConsumerCallback:
         pass
     return callback_function
 
+
 @pytest.fixture
 def callback_null_params() -> dict[str, None]:
     """Null parameters for consumer callback functions"""
     return {'channel': None, 'method': None, 'properties': None}
+
 
 # @pytest.fixture
 # def callback_parameters() -> dict[str, Any]:
@@ -180,3 +188,25 @@ def callback_null_params() -> dict[str, None]:
 #     mock_method = pub_sub.channel.basic_consume().method
 #     yield {'channel': pub_sub.channel, 'method': mock_method, 'properties': None}
 #     pub_sub.connection.close()
+
+
+# --------------------------------------------------------------------------------------------------
+#   Services
+# --------------------------------------------------------------------------------------------------
+@pytest.fixture
+def user_info(user_id: str, user_name: str) -> sch.UserInfo:
+    """Test user information."""
+    return sch.UserInfo(
+        id=user_id,
+        name=user_name,
+        address=f'{config.TEST_PREFIX.title()} Streeet, 123'
+    )
+
+
+@pytest.fixture
+def email_confirmation_info(
+    user_id: str,
+    user_name: str,
+    base_url: str
+) -> sch.EmailConfirmationInfo:
+    return sch.EmailConfirmationInfo(user_id=user_id, user_name=user_name, base_url=base_url)

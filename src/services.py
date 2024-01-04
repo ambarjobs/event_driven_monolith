@@ -16,7 +16,7 @@ import schemas as sch
 import utils
 from database import db
 from exceptions import ProducerNotRegisteredError
-from jose import ExpiredSignatureError
+from jose import ExpiredSignatureError, JWTError
 
 
 CONSUMERS_SUBSCRIPTIONS = (
@@ -79,6 +79,7 @@ def get_producer(producer_name: str) -> ps.PubSub:
 def user_sign_in(
     credentials: sch.UserCredentials,
     user_info: sch.UserInfo,
+    base_url: str,
 ) -> sch.ServiceStatus:
     """User sign in service."""
     # ----------------------------------------------------------------------------------------------
@@ -119,9 +120,10 @@ def user_sign_in(
             )
 
             sign_in_producer = get_producer('user_sign_in')
-            message = sch.EmailConfirmationUserInfo(
-                id=credentials.id,
-                name=user_info.name
+            message = sch.EmailConfirmationInfo(
+                user_id=credentials.id,
+                user_name=user_info.name,
+                base_url=base_url,
             ).model_dump_json()
             sign_in_producer.publish(topic='user-signed-in', message=message)
 
@@ -228,28 +230,29 @@ def email_confirmation(
     body: bytes
 ) -> None:
     """Email confirmation service."""
-    user_info = sch.EmailConfirmationUserInfo.model_validate_json(body)
+    email_confirmation_info = sch.EmailConfirmationInfo.model_validate_json(body)
+    email_confirmation.base_url = None
     token = utils.create_token(
-        payload=user_info.model_dump(),
+        payload=email_confirmation_info.model_dump(),
         expiration_hours=config.EMAIL_VALIDATION_TIMEOUT_HOURS
     )
 
     db.upsert_document(
         database_name=config.EMAIL_CONFIRMATION_DB_NAME,
-        document_id=user_info.id,
+        document_id=email_confirmation_info.user_id,
         fields={'email_confirmation_token': token}
     )
 
-    email_info = sch.EmailConfirmationInfo(
-        user_info=user_info,
+    email_info = sch.EmailConfirmationMessageInfo(
+        confirmation_info=email_confirmation_info,
         validation_expiration_period=config.EMAIL_VALIDATION_TIMEOUT_HOURS,
         email_confirmation_token=token,
     )
 
-    message = f'''Dear {email_info.user_info.name}, thank you for subscribing this PoC.
+    message = f'''Dear {email_info.confirmation_info.user_name}, thank you for subscribing this PoC.
 
     To confirm you subscription, please access the following link:
-    http://localhost/confirm-subsc/{email_info.email_confirmation_token}
+    {email_info.confirmation_info.base_url}/confirm-email/{email_info.email_confirmation_token}
 
     You have {email_info.validation_expiration_period} hours to confirm your subscription.
 
@@ -268,11 +271,11 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
     # ------------------------------------------------------------------------------------------
     #   Output status
     # ------------------------------------------------------------------------------------------
-    invalid_token_payload_status = sch.ServiceStatus(
-        status='invalid_token_payload',
+    invalid_token_status = sch.ServiceStatus(
+        status='invalid_token',
         error=True,
         details=sch.StatusDetails(
-            description='Invalid token payload.'
+            description='Invalid token.'
         ),
     )
 
@@ -326,25 +329,30 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
             # )
             expired_token_status.details.data = {'token': token}
             return expired_token_status
+        except JWTError as err:
+            invalid_token_status.details.data = {'errors': str(err), 'token': token}
+            return invalid_token_status
         try:
-            user_info = sch.EmailConfirmationUserInfo.model_validate(token_payload)
+            email_confirmation_info = sch.EmailConfirmationInfo.model_validate(token_payload)
         except ValidationError as err:
-            invalid_token_payload_status.details.description = str(err)
-            invalid_token_payload_status.details.data = {'errors': err.errors(), 'token': token}
-            return invalid_token_payload_status
+            invalid_token_status.details.data = {'errors': err.errors(), 'token': token}
+            return invalid_token_status
         user_confirmation = db.get_document_by_fields(
             database_name=config.EMAIL_CONFIRMATION_DB_NAME,
-            fields_dict={'_id': user_info.id, 'email_confirmation_token': token},
+            fields_dict={'_id': email_confirmation_info.user_id, 'email_confirmation_token': token},
             additional_fields=['confirmed_datetime']
         )
         if not user_confirmation:
-            inexistent_token_status.details.data = {'token': token, 'email': user_info.id}
+            inexistent_token_status.details.data = {
+                'token': token,
+                'email': email_confirmation_info.user_id
+            }
             return inexistent_token_status
         confirmed_datetime = utils.deep_traversal(user_confirmation, 'confirmed_datetime')
         if confirmed_datetime:
             previously_confirmed_status.details.data = {
                 'confirmation_datetime': confirmed_datetime,
-                'email': user_info.id
+                'email': email_confirmation_info.user_id
             }
             return previously_confirmed_status
 
@@ -352,14 +360,14 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
         confirmation_datetime = this_moment.isoformat()
         db.upsert_document(
             database_name=config.EMAIL_CONFIRMATION_DB_NAME,
-            document_id=user_info.id,
+            document_id=email_confirmation_info.user_id,
             fields={'confirmed_datetime': confirmation_datetime}
         )
 
         # Awaiting consumer implementation.
         # email_confirmed_producer = get_producer('email-confirmed')
-        # email_confirmed_producer.publish(topic='email-confirmed', message=user_info.id)
-        confirmed_status.details.data = {'email': user_info.id, 'name': user_info.name}
+        # email_confirmed_producer.publish(topic='email-confirmed', message=email_confirmation_info.user_id)
+        confirmed_status.details.data = {'email': email_confirmation_info.user_id, 'name': email_confirmation_info.user_name}
         return confirmed_status
     except httpx.HTTPStatusError as err:
         return http_error_status(error=err)

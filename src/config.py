@@ -11,6 +11,7 @@ import sys
 IN_TEST = 'pytest' in sys.modules
 
 TEST_PREFIX = 'test'
+TEST_EXECUTION_LIMIT = 15
 
 # --------------------------------------------------------------------------------------------------
 #  Logging

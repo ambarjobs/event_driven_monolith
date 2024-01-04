@@ -44,15 +44,16 @@ class UserInfo(BaseModel):
     address: str | None = Field(default=None, max_length=ADDRESS_MAX_LENGHT)
 
 
-class EmailConfirmationUserInfo(BaseModel):
-    """User information used for email confirmation."""
-    id: EmailStr
-    name: str = Field(max_length=NAME_MAX_LENGHT)
-
-
 class EmailConfirmationInfo(BaseModel):
-    """Info needed for email confirmation."""
-    user_info: EmailConfirmationUserInfo
+    """User information used for email confirmation."""
+    user_id: EmailStr
+    user_name: str = Field(max_length=NAME_MAX_LENGHT)
+    base_url: str | None = None
+
+
+class EmailConfirmationMessageInfo(BaseModel):
+    """Info needed for email confirmation message."""
+    confirmation_info: EmailConfirmationInfo
     validation_expiration_period: int
     email_confirmation_token: str
 

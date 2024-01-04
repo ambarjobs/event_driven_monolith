@@ -12,15 +12,15 @@ reportGeneralTypeIssues = "none"
 
 [[tool.mypy.overrides]]
 module = [
-    "config",
-    "core",
-    "main",
-    "database",
-    "schemas",
-    "pubsub",
-    "services",
-    "utils",
-    "exceptions",
+    "config.*",
+    "core.*",
+    "main.*",
+    "database.*",
+    "schemas.*",
+    "pubsub.*",
+    "services.*",
+    "utils.*",
+    "exceptions.*",
     "tests.*",
 ]
 ignore_missing_imports = true

@@ -2,6 +2,8 @@
 #  Services module tests
 # ==================================================================================================
 import json
+import random
+import string
 from datetime import datetime, timedelta, UTC
 from unittest import mock
 
@@ -45,7 +47,8 @@ class TestServices:
         user_info: sch.UserInfo,
         known_salt: bytes,
         known_hash: str,
-        monkeypatch: pytest.MonkeyPatch
+        monkeypatch: pytest.MonkeyPatch,
+        base_url: str,
     ) -> None:
         credentials_db = test_db
         credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
@@ -61,12 +64,20 @@ class TestServices:
         info_db.add_permissions()
 
         with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
-            sign_in_status = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
-            event_message = utils.filter_data(data=user_info.model_dump(), keep=['id', 'name'])
-            expected_event_message = json.dumps(event_message, separators=(',', ':'))
+            sign_in_status = srv.user_sign_in(
+                credentials=user_credentials,
+                user_info=user_info,
+                base_url=base_url,
+            )
+            expected_event = {
+                'user_id': user_info.id,
+                'user_name': user_info.name,
+                'base_url': base_url
+            }
+            expected_event_message = json.dumps(expected_event, separators=(',', ':'))
             mock_publish.assert_called_with(
                 topic='user-signed-in',
-                message=expected_event_message
+                message=expected_event_message,
             )
 
             expected_status = sch.ServiceStatus(
@@ -99,7 +110,8 @@ class TestServices:
         user_credentials: sch.UserCredentials,
         user_info: sch.UserInfo,
         known_salt: bytes,
-        monkeypatch: pytest.MonkeyPatch
+        monkeypatch: pytest.MonkeyPatch,
+        base_url: str,
     ) -> None:
         credentials_db = test_db
         credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
@@ -116,10 +128,14 @@ class TestServices:
 
         # Blocks `user-signed-in` event publishing
         with mock.patch(target='pubsub.PubSub.publish'):
-            srv.user_sign_in(credentials=user_credentials, user_info=user_info)
+            srv.user_sign_in(credentials=user_credentials, user_info=user_info, base_url=base_url)
 
             # Try to sign in again an user already signed in.
-            sign_in_status = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
+            sign_in_status = srv.user_sign_in(
+                credentials=user_credentials,
+                user_info=user_info,
+                base_url=base_url
+            )
             credentials_doc = credentials_db.get_document_by_id(
                 document_id=user_credentials.id,
             )
@@ -405,9 +421,9 @@ class TestServices:
         capsys,
         callback_null_params,
         test_db: Db,
+        email_confirmation_info: sch.EmailConfirmationInfo,
     ) -> None:
-        test_user_info = sch.EmailConfirmationUserInfo(id='test@user.id', name='Mr. Test')
-        serialized_user_info = test_user_info.model_dump_json()
+        serialized_confirmation_info = email_confirmation_info.model_dump_json()
 
         email_confimation_db = test_db
         email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
@@ -416,34 +432,239 @@ class TestServices:
         email_confimation_db.add_permissions()
 
         email_confirmation_data = email_confimation_db.get_document_by_id(
-            document_id=test_user_info.id
+            document_id=email_confirmation_info.user_id
         )
         assert 'email_confirmation_token' not in email_confirmation_data
 
         with mock.patch(target='services.stdout_message_delivery') as mock_delivery:
-            srv.email_confirmation(**callback_null_params, body=serialized_user_info)
+            srv.email_confirmation(**callback_null_params, body=serialized_confirmation_info)
             mock_delivery.assert_called()
 
-        srv.email_confirmation(**callback_null_params, body=serialized_user_info)
+        srv.email_confirmation(**callback_null_params, body=serialized_confirmation_info)
         captured = capsys.readouterr()
-        assert test_user_info.name in captured.out
+        assert email_confirmation_info.user_name in captured.out
         assert 'To confirm you subscription, please access the following link:' in captured.out
 
         email_confirmation_data = email_confimation_db.get_document_by_id(
-            document_id=test_user_info.id
+            document_id=email_confirmation_info.user_id
         )
         assert 'email_confirmation_token' in email_confirmation_data
         assert email_confirmation_data['email_confirmation_token']
 
     def test_email_confirmation__invalid_event_format(self, callback_null_params) -> None:
-        test_user_info = {'invalid_field': 'invalid'}
-        serialized_user_info = json.dumps(test_user_info)
+        email_confirmation_info = {'invalid_field': 'invalid_value'}
+        serialized_confirmation_info = json.dumps(email_confirmation_info)
 
         with pytest.raises(ValidationError):
-            srv.email_confirmation(**callback_null_params, body=serialized_user_info)
+            srv.email_confirmation(**callback_null_params, body=serialized_confirmation_info)
 
     # ==============================================================================================
     #   check_email_confirmation service
     # ==============================================================================================
-    def test_check_email_confirmation__general_case(self) -> None:
-        pass
+    def test_check_email_confirmation__general_case(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+        test_db: Db,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={'email_confirmation_token': test_token}
+        )
+
+        email_confirmation_data = email_confimation_db.get_document_by_id(
+            document_id=token_confirmation_info.user_id
+        )
+        assert utils.deep_traversal(email_confirmation_data, 'confirmed_datetime') is None
+
+        email_confirmation_status = srv.check_email_confirmation(token=test_token)
+
+        assert email_confirmation_status.status == 'confirmed'
+        assert email_confirmation_status.error is False
+        assert email_confirmation_status.details.description == 'Email confirmed.'
+        assert email_confirmation_status.details.data['email'] == token_confirmation_info.user_id
+        assert email_confirmation_status.details.data['name'] == token_confirmation_info.user_name
+
+        email_confirmation_data = email_confimation_db.get_document_by_id(
+            document_id=email_confirmation_info.user_id
+        )
+
+        this_moment = datetime.now(tz=UTC)
+        assert utils.deep_traversal(email_confirmation_data, 'confirmed_datetime') is not None
+
+        confirmed_datetime_iso = utils.deep_traversal(email_confirmation_data, 'confirmed_datetime')
+
+        # Confirmed on this test
+        assert (
+            this_moment - datetime.fromisoformat(confirmed_datetime_iso)
+        ) < timedelta(seconds=config.TEST_EXECUTION_LIMIT)
+
+    def test_check_email_confirmation__invalid_token(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+        test_db: Db,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+        invalid_token = test_token
+        while invalid_token == test_token:
+            invalid_token = test_token[:-1] + random.choice(string.ascii_letters)
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={'email_confirmation_token': invalid_token}
+        )
+
+        email_confirmation_status = srv.check_email_confirmation(token=invalid_token)
+
+        assert email_confirmation_status.status == 'invalid_token'
+        assert email_confirmation_status.error is True
+        assert email_confirmation_status.details.description == 'Invalid token.'
+        assert email_confirmation_status.details.data['token'] == invalid_token
+        assert email_confirmation_status.details.data['errors'] in (
+            'Not enough segments',
+            'Signature verification failed.'
+        )
+
+    def test_check_email_confirmation__invalid_token__payload_validation_error(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+        test_db: Db,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        token_confirmation_info.user_id = 'invalid id(email)'
+        invalid_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={'email_confirmation_token': invalid_token}
+        )
+
+        email_confirmation_status = srv.check_email_confirmation(token=invalid_token)
+
+        assert email_confirmation_status.status == 'invalid_token'
+        assert email_confirmation_status.error is True
+        assert email_confirmation_status.details.description == 'Invalid token.'
+        assert email_confirmation_status.details.data['token'] == invalid_token
+        assert email_confirmation_status.details.data['errors'][0]['type'] == 'value_error'
+        assert email_confirmation_status.details.data['errors'][0]['loc'] == ('user_id',)
+
+    def test_check_email_confirmation__inexistent_token(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+        test_db: Db,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(document_id=token_confirmation_info.user_id)
+
+        email_confirmation_status = srv.check_email_confirmation(token=test_token)
+
+        assert email_confirmation_status.status == 'inexistent_token'
+        assert email_confirmation_status.error is True
+        assert email_confirmation_status.details.description == 'Inexistent token for the user id.'
+        assert email_confirmation_status.details.data['token'] == test_token
+        assert email_confirmation_status.details.data['email'] == token_confirmation_info.user_id
+
+    def test_check_email_confirmation__expired_token(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+        test_db: Db,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        expired_token = utils.create_token(
+            payload=token_confirmation_info.model_dump(),
+            expiration_hours=-1.0
+        )
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={'email_confirmation_token': expired_token}
+        )
+
+        email_confirmation_status = srv.check_email_confirmation(token=expired_token)
+
+        assert email_confirmation_status.status == 'expired_token'
+        assert email_confirmation_status.error is True
+        assert email_confirmation_status.details.description == 'The token has expired.'
+        assert email_confirmation_status.details.data['token'] == expired_token
+
+    def test_check_email_confirmation__previously_confirmed(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+        test_db: Db,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        previous_confirmation_datetime = datetime.now(tz=UTC) - timedelta(hours=-1)
+        previous_confirmation_datetime_iso = previous_confirmation_datetime.isoformat()
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={
+                'email_confirmation_token': test_token,
+                'confirmed_datetime': previous_confirmation_datetime_iso
+            }
+        )
+
+        email_confirmation_status = srv.check_email_confirmation(token=test_token)
+
+        assert email_confirmation_status.status == 'previously_confirmed'
+        assert email_confirmation_status.error is True
+        assert email_confirmation_status.details.description == 'The email was already confirmed.'
+        assert (
+            email_confirmation_status.details.data['confirmation_datetime'] ==
+            previous_confirmation_datetime_iso
+        )
+        assert email_confirmation_status.details.data['email'] == token_confirmation_info.user_id

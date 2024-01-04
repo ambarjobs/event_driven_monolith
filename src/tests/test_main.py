@@ -16,8 +16,6 @@ from main import app
 from tests.helpers import Db
 
 
-TEST_EXECUTION_LIMIT = 15
-
 client = TestClient(app=app)
 
 
@@ -188,9 +186,10 @@ class TestMain:
 
         last_login_iso = db_user_credentials.get('last_login')
         assert last_login_iso is not None
+        # Logged in on this test
         assert (
             this_moment - datetime.fromisoformat(last_login_iso) <
-            timedelta(seconds=TEST_EXECUTION_LIMIT)
+            timedelta(seconds=config.TEST_EXECUTION_LIMIT)
         )
 
     def test_login__inexistent_user(
@@ -352,10 +351,10 @@ class TestMain:
         sign_in_body = {
             'hash': sign_in_hash,
             'validated': True,
-            # Logged in more than TEST_EXECUTION_LIMIT seconds ago.
+            # Logged in before this test.
             'last_login': datetime.isoformat(
                 this_moment -
-                timedelta(seconds=TEST_EXECUTION_LIMIT)
+                timedelta(seconds=config.TEST_EXECUTION_LIMIT)
             )
         }
         # Minimal sign in.
@@ -429,7 +428,8 @@ class TestMain:
         this_moment = datetime.now(tz=UTC)
         last_login_iso = db_user_credentials.get('last_login')
         assert last_login_iso is not None
+        # Logged in on this test.
         assert (
             this_moment - datetime.fromisoformat(last_login_iso) <
-            timedelta(seconds=TEST_EXECUTION_LIMIT)
+            timedelta(seconds=config.TEST_EXECUTION_LIMIT)
         )
