@@ -5,10 +5,8 @@ import os
 
 import httpx
 import pytest
-from pydantic import SecretStr
 
 import config
-import schemas as sch
 import utils
 from database import DatabaseInfo, Index, db
 from exceptions import InvalidCouchDBCredentialError
@@ -231,10 +229,18 @@ class TestDatabase:
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.get_document_by_id() method
     # ----------------------------------------------------------------------------------------------
-    def test_get_document_by_id__general_case(self, test_db: Db, user_id: str) -> None:
+    def test_get_document_by_id__general_case(
+        self,
+        test_db: Db,
+        user_id: str,
+        another_user_id: str
+    ) -> None:
         database_name = test_db.database_name
         document_id = user_id
         body = {'field1': 'value1', 'field2': 'value2'}
+
+        another_document_id = another_user_id
+        another_body = {'fieldA': 'valueA', 'fieldB': 'valueB'}
 
         test_db.create()
         test_db.add_permissions()
@@ -243,6 +249,8 @@ class TestDatabase:
                 Index(name=f'{database_name}-id-index', fields=['_id'])
             ]
         )
+
+        test_db.create_document(document_id= another_document_id, body=another_body)
         test_db.create_document(document_id= document_id, body=body)
 
         document_info = db.get_document_by_id(
@@ -254,6 +262,8 @@ class TestDatabase:
         assert utils.deep_traversal(document_info, '_id') == document_id
         assert utils.deep_traversal(document_info, 'field1') == 'value1'
         assert utils.deep_traversal(document_info, 'field2') == 'value2'
+        assert utils.deep_traversal(document_info, 'fieldA') is None
+        assert utils.deep_traversal(document_info, 'fieldB') is None
 
     def test_get_document_by_id__inexistent_document(self, test_db: Db, user_id: str) -> None:
         database_name = test_db.database_name
@@ -277,10 +287,18 @@ class TestDatabase:
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.get_document_fields_by_id() method
     # ----------------------------------------------------------------------------------------------
-    def test_get_document_fields_by_id__general_case(self, test_db: Db, user_id: str) -> None:
+    def test_get_document_fields_by_id__general_case(
+        self,
+        test_db: Db,
+        user_id: str,
+        another_user_id: str
+    ) -> None:
         database_name = test_db.database_name
         document_id = user_id
         body = {'field1': 'value1', 'field2': 'value2'}
+
+        another_document_id = another_user_id
+        another_body = {'fieldA': 'valueA', 'fieldB': 'valueB'}
 
         test_db.create()
         test_db.add_permissions()
@@ -289,6 +307,8 @@ class TestDatabase:
                 Index(name=f'{database_name}-id-index', fields=['_id'])
             ]
         )
+
+        test_db.create_document(document_id= another_document_id, body=another_body)
         test_db.create_document(document_id= document_id, body=body)
 
         document_info = db.get_document_fields_by_id(
@@ -301,6 +321,8 @@ class TestDatabase:
         assert utils.deep_traversal(document_info, '_id') == document_id
         assert utils.deep_traversal(document_info, 'field1') == 'value1'
         assert utils.deep_traversal(document_info, 'field2') == 'value2'
+        assert utils.deep_traversal(document_info, 'fieldA') is None
+        assert utils.deep_traversal(document_info, 'fieldB') is None
 
     def test_get_document_fields_by_id__all_fields(self, test_db: Db, user_id: str) -> None:
         database_name = test_db.database_name
@@ -398,6 +420,162 @@ class TestDatabase:
         )
 
         assert document_info == {}
+
+    # ----------------------------------------------------------------------------------------------
+    #   CouchDB.get_document_by_fields() method
+    # ----------------------------------------------------------------------------------------------
+    def test_get_document_by_fields__general_case(
+        self,
+        test_db: Db,
+        user_id: str,
+        another_user_id: str
+    ) -> None:
+        database_name = test_db.database_name
+        main_document_id = user_id
+        main_body = {'field1': 'value1', 'field2': 'value2'}
+
+        another_document_id = another_user_id
+        another_body = {'fieldA': 'valueA', 'fieldB': 'valueB'}
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= another_document_id, body=another_body)
+        test_db.create_document(document_id= main_document_id, body=main_body)
+
+        fields_dict = {'_id': main_document_id, 'field1': 'value1'}
+        document_info = db.get_document_by_fields(
+            database_name=database_name,
+            fields_dict=fields_dict,
+            additional_fields=['field2'],
+        )
+
+        assert document_info
+        assert utils.deep_traversal(document_info, '_id') == main_document_id
+        assert utils.deep_traversal(document_info, 'field1') == 'value1'
+        assert utils.deep_traversal(document_info, 'field2') == 'value2'
+        assert utils.deep_traversal(document_info, 'fieldA') is None
+        assert utils.deep_traversal(document_info, 'fieldB') is None
+
+    def test_get_document_by_fields__specific_fields__no_additional(
+        self,
+        test_db: Db,
+        user_id: str,
+    ) -> None:
+        database_name = test_db.database_name
+        main_document_id = user_id
+        main_body = {'field1': 'value1', 'field2': 'value2'}
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= main_document_id, body=main_body)
+
+        fields_dict = {'_id': main_document_id, 'field2': 'value2'}
+        document_info = db.get_document_by_fields(
+            database_name=database_name,
+            fields_dict=fields_dict,
+        )
+
+        assert document_info
+        assert utils.deep_traversal(document_info, '_id') == main_document_id
+        assert utils.deep_traversal(document_info, 'field1') is None
+        assert utils.deep_traversal(document_info, 'field2') == 'value2'
+
+    def test_get_document_by_fields__specific_fields__only_additional(
+        self,
+        test_db: Db,
+        user_id: str,
+    ) -> None:
+        database_name = test_db.database_name
+        main_document_id = user_id
+        main_body = {'field1': 'value1', 'field2': 'value2'}
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= main_document_id, body=main_body)
+
+        fields_dict = {'_id': main_document_id}
+        document_info = db.get_document_by_fields(
+            database_name=database_name,
+            fields_dict=fields_dict,
+            additional_fields=['field2'],
+        )
+
+        assert document_info
+        assert utils.deep_traversal(document_info, '_id') == main_document_id
+        assert utils.deep_traversal(document_info, 'field1') is None
+        assert utils.deep_traversal(document_info, 'field2') == 'value2'
+
+    def test_get_document_by_fields__inexistent_field(
+        self,
+        test_db: Db,
+        user_id: str,
+    ) -> None:
+        database_name = test_db.database_name
+        main_document_id = user_id
+        main_body = {'field1': 'value1', 'field2': 'value2'}
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= main_document_id, body=main_body)
+
+        fields_dict = {'_id': main_document_id, 'inexistent_field': 'inexistent_value'}
+        document_info = db.get_document_by_fields(
+            database_name=database_name,
+            fields_dict=fields_dict,
+        )
+
+        assert document_info == {}
+
+    def test_get_document_by_fields__inexistent_additional_field(
+        self,
+        test_db: Db,
+        user_id: str,
+    ) -> None:
+        database_name = test_db.database_name
+        main_document_id = user_id
+        main_body = {'field1': 'value1', 'field2': 'value2'}
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+        test_db.create_document(document_id= main_document_id, body=main_body)
+
+        fields_dict = {'_id': main_document_id, 'field1': 'value1'}
+        document_info = db.get_document_by_fields(
+            database_name=database_name,
+            fields_dict=fields_dict,
+            additional_fields=['inexistent_field'],
+        )
+
+        assert document_info
+        assert utils.deep_traversal(document_info, '_id') == main_document_id
+        assert utils.deep_traversal(document_info, 'field1') == 'value1'
+        assert utils.deep_traversal(document_info, 'field2') is None
+        assert utils.deep_traversal(document_info, 'inexistent_field') is None
 
     # ----------------------------------------------------------------------------------------------
     #   CouchDB.clean_up_fields() method

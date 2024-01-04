@@ -5,11 +5,11 @@ from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field, SecretStr
 
-
 NAME_MAX_LENGHT = 100
 PASSWD_MAX_LENGHT = 64
 PHONE_MAX_LENGHT = 20
 ADDRESS_MAX_LENGHT = 20
+TOKEN_MAX_LENGHT = 1024
 
 
 class StatusDetails(BaseModel):
@@ -24,6 +24,10 @@ class ServiceStatus(BaseModel):
     status: str
     error: bool = Field(default=False)
     details: StatusDetails
+
+    def model_dump(self, *args, **kwargs) -> dict[str, Any]:
+        kwargs['exclude_unset'] = True
+        return super().model_dump(*args, **kwargs)
 
 
 class UserCredentials(BaseModel):
@@ -51,3 +55,8 @@ class EmailConfirmationInfo(BaseModel):
     user_info: EmailConfirmationUserInfo
     validation_expiration_period: int
     email_confirmation_token: str
+
+
+class EmailConfirmationToken(BaseModel):
+    """Token used in email confirmation."""
+    token: str = Field(max_length=TOKEN_MAX_LENGHT)

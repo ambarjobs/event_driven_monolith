@@ -9,7 +9,6 @@ import httpx
 from fastapi import status
 
 import config
-import schemas as sch
 import utils
 from config import logging as log
 from exceptions import InvalidCouchDBCredentialError
@@ -149,6 +148,30 @@ class CouchDb:
             },
             "fields": fields,
         }
+
+        response = httpx.post(
+            url=f'{self.url}/{database_name}/_find',
+            auth=self.app_credentials,
+            json=body,
+        ).raise_for_status()
+
+        document_info = utils.deep_traversal(response.json(), 'docs', 0)
+        return document_info or {}
+
+    def get_document_by_fields(
+        self,
+        database_name: str,
+        fields_dict: dict[str, str] | None = None,
+        additional_fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Get information about a document selecting it by it's `fields`."""
+        fields_dict = fields_dict or {}
+        fields = list(fields_dict.keys()) + (additional_fields or [])
+        body: dict = {
+            "selector": fields_dict
+        }
+        if fields:
+            body['fields'] = fields
 
         response = httpx.post(
             url=f'{self.url}/{database_name}/_find',

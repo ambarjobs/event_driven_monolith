@@ -37,44 +37,73 @@ def signin(
     user_info: sch.UserInfo
 ) -> JSONResponse:
     """Sign in endpoint."""
-    result = srv.user_sign_in(credentials=credentials, user_info=user_info)
-    result_sch = sch.ServiceStatus(**result)
-    if result_sch.status == 'user_already_signed_in':
-        log.warning(f'User already signed in: {credentials.id}')
-        return JSONResponse(content=result, status_code=status.HTTP_409_CONFLICT)
-    if result_sch.error and result_sch.status == 'http_error':
-        error_code = result_sch.details.error_code
-        log.error(f'Signin endpoint error: {error_code}')
-        return JSONResponse(
-            content=result,
-            status_code=error_code or 500
-        )
-    log.info(f'User signed in: {credentials.id}')
-    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
+    sign_in_status = srv.user_sign_in(credentials=credentials, user_info=user_info)
+    match sign_in_status:
+        case sch.ServiceStatus(status='user_already_signed_in'):
+            log.warning(f'User already signed in: {credentials.id}')
+            status_code = status.HTTP_409_CONFLICT
+        case sch.ServiceStatus(status='http_error'):
+            error_code = sign_in_status.details.error_code
+            log.error(f'Signin endpoint error: {error_code}')
+            status_code = error_code or 500
+        case _:
+            log.info(f'User signed in: {credentials.id}')
+            status_code = status.HTTP_201_CREATED
+    return JSONResponse(content=sign_in_status.model_dump(), status_code=status_code)
 
 
 @app.post('/login')
 def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse:
     credentials =oauth2form_to_credentials(form_data=form)
-    login_data = srv.authentication(credentials=credentials)
-    login_status = sch.ServiceStatus(**login_data)
+    login_status = srv.authentication(credentials=credentials)
     match login_status:
-        case (sch.ServiceStatus(status='incorrect_login_credentials') |
+        case (
+            sch.ServiceStatus(status='incorrect_login_credentials') |
             sch.ServiceStatus(status='email_not_validated') |
             sch.ServiceStatus(status='user_already_signed_in')
         ):
             log.warning(f'Login non authorized: {credentials.id}')
-            return JSONResponse(content=login_data, status_code=status.HTTP_401_UNAUTHORIZED)
+            status_code = status.HTTP_401_UNAUTHORIZED
         case sch.ServiceStatus(status='http_error'):
             error_code = login_status.details.error_code
-            log.error(f'Login endpoint error: {error_code}')
-            return JSONResponse(
-                content=login_data,
-                status_code=error_code or 500
-            )
+            log.error(f'login endpoint error: {error_code}')
+            status_code = error_code or 500
         case _:
             log.info(f'User logged in: {credentials.id}')
-            return JSONResponse(content=login_data, status_code=status.HTTP_200_OK)
+            status_code = status.HTTP_200_OK
+    return JSONResponse(content=login_status.model_dump(), status_code=status_code)
+
+# ==================================================================================================
+#  Email confirmation
+# ==================================================================================================
+@app.post('confirm-email')
+def confirm_email(token_json: sch.EmailConfirmationToken) -> JSONResponse:
+    confirmation_status = srv.check_email_confirmation(token=token_json.token)
+    token = confirmation_status.details.data['token'] if confirmation_status.details.data else ''
+    email = confirmation_status.details.data['email'] if confirmation_status.details.data else ''
+    match confirmation_status:
+        case (
+            sch.ServiceStatus(status='invalid_token_payload') |
+            sch.ServiceStatus(status='expired_token')
+        ):
+            log.error(f'Invalid token: {token}')
+            status_code = status.HTTP_400_BAD_REQUEST
+        case sch.ServiceStatus(status='inexistent_token'):
+            log.error(f'Inexistent token: {token}')
+            status_code = status.HTTP_404_NOT_FOUND
+        case sch.ServiceStatus(status='previously_confirmed'):
+            log.warning(f'Email already confirmed: {email}')
+            status_code = status.HTTP_409_CONFLICT
+        case sch.ServiceStatus(status='http_error'):
+            error_code = confirmation_status.details.error_code
+            log.error(f'confirm-mail endpoint error: {error_code}')
+            status_code = error_code or 500
+        case _:
+            log.info(f'User email confirmed: {email}')
+            status_code = status.HTTP_200_OK
+    return JSONResponse(content=confirmation_status.model_dump(), status_code=status_code)
+
+
 
 
 @app.get('/tst')

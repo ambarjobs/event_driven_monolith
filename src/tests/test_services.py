@@ -61,7 +61,7 @@ class TestServices:
         info_db.add_permissions()
 
         with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
-            result = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
+            sign_in_status = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
             event_message = utils.filter_data(data=user_info.model_dump(), keep=['id', 'name'])
             expected_event_message = json.dumps(event_message, separators=(',', ':'))
             mock_publish.assert_called_with(
@@ -69,14 +69,12 @@ class TestServices:
                 message=expected_event_message
             )
 
-            expected_result = {
-                'status': 'successful_sign_in',
-                'error': False,
-                'details': {
-                    'description': 'User signed in successfully.'
-                }
-            }
-            assert result == expected_result
+            expected_status = sch.ServiceStatus(
+                status='successful_sign_in',
+                error=False,
+                details = sch.StatusDetails(description='User signed in successfully.')
+            )
+            assert sign_in_status == expected_status
 
         credentials_doc = credentials_db.get_document_by_id(
             document_id=user_credentials.id,
@@ -121,21 +119,19 @@ class TestServices:
             srv.user_sign_in(credentials=user_credentials, user_info=user_info)
 
             # Try to sign in again an user already signed in.
-            result = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
+            sign_in_status = srv.user_sign_in(credentials=user_credentials, user_info=user_info)
             credentials_doc = credentials_db.get_document_by_id(
                 document_id=user_credentials.id,
             )
-            expected_result = {
-                'status': 'user_already_signed_in',
-                'error': True,
-                'details': {
-                    'description': 'User already signed in.',
-                    'data': {
-                        'version': credentials_doc['_rev']
-                    }
-                }
-            }
-            assert result == expected_result
+            expected_status = sch.ServiceStatus(
+                status='user_already_signed_in',
+                error=True,
+                details = sch.StatusDetails(
+                    description='User already signed in.',
+                    data={'version': credentials_doc['_rev']}
+                )
+            )
+            assert sign_in_status == expected_status
 
     # ==============================================================================================
     #   authentication service
@@ -161,16 +157,13 @@ class TestServices:
             }
         )
 
-        auth_result = srv.authentication(credentials=user_credentials)
-        assert utils.deep_traversal(auth_result, 'status') == 'successfully_logged_in'
-        assert utils.deep_traversal(
-            auth_result,
-            'details',
-            'description',
-        ) == 'User has successfully logged in.'
-        assert utils.deep_traversal(auth_result, 'error') is False
+        auth_status = srv.authentication(credentials=user_credentials)
 
-        token = utils.deep_traversal(auth_result, 'details', 'data', 'token')
+        assert auth_status.status == 'successfully_logged_in'
+        assert auth_status.details.description =='User has successfully logged in.'
+        assert auth_status.error is False
+
+        token = auth_status.details.data['token']
         token_payload = utils.get_token_payload(token=token)
         assert utils.deep_traversal(token_payload, 'sub') == user_credentials.id
 
@@ -203,17 +196,15 @@ class TestServices:
         )
 
         user_credentials.id = 'inexistent@user.id'
-        auth_result = srv.authentication(credentials=user_credentials)
-        assert utils.deep_traversal(auth_result, 'status') == 'incorrect_login_credentials'
-        assert utils.deep_traversal(
-            auth_result,
-            'details',
-            'description',
-        ) == 'Invalid user or password. Check if user has signed in.'
-        assert utils.deep_traversal(auth_result, 'error') is True
+        auth_status = srv.authentication(credentials=user_credentials)
+        assert auth_status.status == 'incorrect_login_credentials'
+        assert auth_status.details.description == (
+            'Invalid user or password. Check if user has signed in.'
+        )
+        assert auth_status.error is True
 
-        token = utils.deep_traversal(auth_result, 'details', 'data', 'token')
-        assert token is None
+        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
+        auth_status.details.data is None
 
     def test_authentication__incorrect_password(
         self,
@@ -236,17 +227,15 @@ class TestServices:
         )
 
         user_credentials.password = SecretStr('incorrect')
-        auth_result = srv.authentication(credentials=user_credentials)
-        assert utils.deep_traversal(auth_result, 'status') == 'incorrect_login_credentials'
-        assert utils.deep_traversal(
-            auth_result,
-            'details',
-            'description',
-        ) == 'Invalid user or password. Check if user has signed in.'
-        assert utils.deep_traversal(auth_result, 'error') is True
+        auth_status = srv.authentication(credentials=user_credentials)
+        assert auth_status.status == 'incorrect_login_credentials'
+        assert auth_status.details.description == (
+            'Invalid user or password. Check if user has signed in.'
+        )
+        assert auth_status.error is True
 
-        token = utils.deep_traversal(auth_result, 'details', 'data', 'token')
-        assert token is None
+        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
+        auth_status.details.data is None
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -271,17 +260,15 @@ class TestServices:
             }
         )
 
-        auth_result = srv.authentication(credentials=user_credentials)
-        assert utils.deep_traversal(auth_result, 'status') == 'incorrect_login_credentials'
-        assert utils.deep_traversal(
-            auth_result,
-            'details',
-            'description',
-        ) == 'Invalid user or password. Check if user has signed in.'
-        assert utils.deep_traversal(auth_result, 'error') is True
+        auth_status = srv.authentication(credentials=user_credentials)
+        assert auth_status.status == 'incorrect_login_credentials'
+        assert auth_status.details.description == (
+            'Invalid user or password. Check if user has signed in.'
+        )
+        assert auth_status.error is True
 
-        token = utils.deep_traversal(auth_result, 'details', 'data', 'token')
-        assert token is None
+        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
+        auth_status.details.data is None
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -307,17 +294,13 @@ class TestServices:
             }
         )
 
-        auth_result = srv.authentication(credentials=user_credentials)
-        assert utils.deep_traversal(auth_result, 'status') == 'email_not_validated'
-        assert utils.deep_traversal(
-            auth_result,
-            'details',
-            'description',
-        ) == 'User email is not validated.'
-        assert utils.deep_traversal(auth_result, 'error') is True
+        auth_status = srv.authentication(credentials=user_credentials)
+        assert auth_status.status == 'email_not_validated'
+        assert auth_status.details.description == 'User email is not validated.'
+        assert auth_status.error is True
 
-        token = utils.deep_traversal(auth_result, 'details', 'data', 'token')
-        assert token is None
+        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
+        auth_status.details.data is None
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -348,17 +331,13 @@ class TestServices:
             }
         )
 
-        auth_result = srv.authentication(credentials=user_credentials)
-        assert utils.deep_traversal(auth_result, 'status') == 'user_already_signed_in'
-        assert utils.deep_traversal(
-            auth_result,
-            'details',
-            'description',
-        ) == 'User was already logged in.'
-        assert utils.deep_traversal(auth_result, 'error') is True
+        auth_status = srv.authentication(credentials=user_credentials)
+        assert auth_status.status == 'user_already_signed_in'
+        assert auth_status.details.description == 'User was already logged in.'
+        assert auth_status.error is True
 
-        token = utils.deep_traversal(auth_result, 'details', 'data', 'token')
-        assert token is None
+        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
+        auth_status.details.data is None
 
     def test_authentication__expired_last_login(
         self,
@@ -389,16 +368,12 @@ class TestServices:
             }
         )
 
-        auth_result = srv.authentication(credentials=user_credentials)
-        assert utils.deep_traversal(auth_result, 'status') == 'successfully_logged_in'
-        assert utils.deep_traversal(
-            auth_result,
-            'details',
-            'description',
-        ) == 'User has successfully logged in.'
-        assert utils.deep_traversal(auth_result, 'error') is False
+        auth_status = srv.authentication(credentials=user_credentials)
+        assert auth_status.status == 'successfully_logged_in'
+        assert auth_status.details.description == 'User has successfully logged in.'
+        assert auth_status.error is False
 
-        token = utils.deep_traversal(auth_result, 'details', 'data', 'token')
+        token = auth_status.details.data['token']
         token_payload = utils.get_token_payload(token=token)
         assert utils.deep_traversal(token_payload, 'sub') == user_credentials.id
 
@@ -423,9 +398,9 @@ class TestServices:
         assert test_message in captured.out
 
     # ==============================================================================================
-    #   email_confirmation service
+    #   email_confirmation consumer service
     # ==============================================================================================
-    def test_email_confirmation__general_case(
+    def test_email_confirmation_consumer__general_case(
         self,
         capsys,
         callback_null_params,
@@ -466,3 +441,9 @@ class TestServices:
 
         with pytest.raises(ValidationError):
             srv.email_confirmation(**callback_null_params, body=serialized_user_info)
+
+    # ==============================================================================================
+    #   check_email_confirmation service
+    # ==============================================================================================
+    def test_check_email_confirmation__general_case(self) -> None:
+        pass

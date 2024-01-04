@@ -133,6 +133,12 @@ def user_id() -> str:
     return f'{config.TEST_PREFIX}@user.id'
 
 
+@pytest.fixture
+def another_user_id() -> str:
+    """Another test user id."""
+    return f'{config.TEST_PREFIX}-another@user.id'
+
+
 # --------------------------------------------------------------------------------------------------
 #   Pubsub
 # --------------------------------------------------------------------------------------------------
