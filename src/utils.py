@@ -32,13 +32,16 @@ def filter_data(data: dict, keep: Sequence[str]) -> dict:
 def calc_hash(password: SecretStr) -> str:
     """Calculate a hash (with salt) for a password."""
     salt = bcrypt.gensalt()
-    hash_bytes = bcrypt.hashpw(password=password.get_secret_value().encode('utf-8'), salt=salt)
+    hash_bytes = bcrypt.hashpw(
+        password=password.get_secret_value().encode(config.APP_ENCODING_FORMAT),
+        salt=salt
+    )
     return hash_bytes.hex()
 
 def check_password(password: SecretStr, hash_value: str) -> bool:
     """Check if the `password` corresponds to the `hash_value`."""
     return bcrypt.checkpw(
-        password=password.get_secret_value().encode('utf-8'),
+        password=password.get_secret_value().encode(config.APP_ENCODING_FORMAT),
         hashed_password=bytes.fromhex(hash_value),
     )
 

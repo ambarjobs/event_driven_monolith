@@ -112,7 +112,7 @@ class TestPubSub:
 
         def callback_test_func(channel, method, properties, body: bytes) -> None:
             """Test consumer callback function."""
-            print(body.decode(), end='', flush=True)
+            print(body.decode(config.APP_ENCODING_FORMAT), end='', flush=True)
 
         test_topic = 'test-topic'
         test_message = 'This is the test message!!!'
@@ -151,7 +151,7 @@ class TestPubSub:
 
         def callback_test_func(channel, method, properties, body: bytes) -> None:
             """Test consumer callback function."""
-            print(body.decode(), end='', flush=True)
+            print(body.decode(config.APP_ENCODING_FORMAT), end='', flush=True)
 
         consumer_topic = 'test-topic'
         producer_topic = 'inexistent'

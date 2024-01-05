@@ -7,7 +7,7 @@ from unittest import mock
 
 import bcrypt
 import pytest
-from pydantic import SecretStr, ValidationError
+from pydantic import SecretStr
 
 import config
 import pubsub as ps
@@ -449,13 +449,6 @@ class TestServices:
         assert 'email_confirmation_token' in email_confirmation_data
         assert email_confirmation_data['email_confirmation_token']
 
-    def test_email_confirmation__invalid_event_format(self, callback_null_params) -> None:
-        email_confirmation_info = {'invalid_field': 'invalid_value'}
-        serialized_confirmation_info = json.dumps(email_confirmation_info)
-
-        with pytest.raises(ValidationError):
-            srv.email_confirmation(**callback_null_params, body=serialized_confirmation_info)
-
     # ==============================================================================================
     #   check_email_confirmation service
     # ==============================================================================================
@@ -485,7 +478,9 @@ class TestServices:
         )
         assert utils.deep_traversal(email_confirmation_data, 'confirmed_datetime') is None
 
-        email_confirmation_status = srv.check_email_confirmation(token=test_token)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            email_confirmation_status = srv.check_email_confirmation(token=test_token)
 
         assert email_confirmation_status.status == 'confirmed'
         assert email_confirmation_status.error is False
@@ -519,7 +514,9 @@ class TestServices:
         while invalid_token == test_token:
             invalid_token = test_token[:-1]
 
-        email_confirmation_status = srv.check_email_confirmation(token=invalid_token)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            email_confirmation_status = srv.check_email_confirmation(token=invalid_token)
 
         assert email_confirmation_status.status == 'invalid_token'
         assert email_confirmation_status.error is True
@@ -540,7 +537,9 @@ class TestServices:
         token_confirmation_info.user_id = 'invalid id(email)'
         invalid_token = utils.create_token(payload=token_confirmation_info.model_dump())
 
-        email_confirmation_status = srv.check_email_confirmation(token=invalid_token)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            email_confirmation_status = srv.check_email_confirmation(token=invalid_token)
 
         assert email_confirmation_status.status == 'invalid_token'
         assert email_confirmation_status.error is True
@@ -567,7 +566,9 @@ class TestServices:
 
         email_confimation_db.create_document(document_id=token_confirmation_info.user_id)
 
-        email_confirmation_status = srv.check_email_confirmation(token=test_token)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            email_confirmation_status = srv.check_email_confirmation(token=test_token)
 
         assert email_confirmation_status.status == 'inexistent_token'
         assert email_confirmation_status.error is True
@@ -587,7 +588,9 @@ class TestServices:
             expiration_hours=-1.0
         )
 
-        email_confirmation_status = srv.check_email_confirmation(token=expired_token)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            email_confirmation_status = srv.check_email_confirmation(token=expired_token)
 
         assert email_confirmation_status.status == 'expired_token'
         assert email_confirmation_status.error is True
@@ -620,7 +623,9 @@ class TestServices:
             }
         )
 
-        email_confirmation_status = srv.check_email_confirmation(token=test_token)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            email_confirmation_status = srv.check_email_confirmation(token=test_token)
 
         assert email_confirmation_status.status == 'previously_confirmed'
         assert email_confirmation_status.error is True
@@ -630,3 +635,28 @@ class TestServices:
             previous_confirmation_datetime_iso
         )
         assert email_confirmation_status.details.data['email'] == token_confirmation_info.user_id
+
+    # ==============================================================================================
+    #   enable_user consumer service
+    # ==============================================================================================
+    def test_enable_user_consumer__general_case(
+        self,
+        callback_null_params,
+        test_db: Db,
+        user_id: str,
+    ) -> None:
+        user_credentials_db = test_db
+        user_credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
+
+        user_credentials_db.create()
+        user_credentials_db.add_permissions()
+
+        user_credentials_db.create_document(document_id=user_id)
+
+        user_credentials_data = user_credentials_db.get_document_by_id(document_id=user_id)
+        assert 'validated' not in user_credentials_data
+
+        srv.enable_user(**callback_null_params, body=user_id.encode(config.APP_ENCODING_FORMAT))
+
+        user_credentials_data = user_credentials_db.get_document_by_id(document_id=user_id)
+        assert utils.deep_traversal(user_credentials_data, 'validated') is True

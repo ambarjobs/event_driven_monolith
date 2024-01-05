@@ -21,6 +21,7 @@ from jose import ExpiredSignatureError, JWTError
 
 CONSUMERS_SUBSCRIPTIONS = (
     ps.Subscription(topic_name='user-signed-in', consumer_service_name='email_confirmation'),
+    ps.Subscription(topic_name='email-confirmed', consumer_service_name='enable_user'),
 )
 
 PRODUCERS_NAMES = (
@@ -72,6 +73,12 @@ def get_producer(producer_name: str) -> ps.PubSub:
 # ==================================================================================================
 #   Services
 # ==================================================================================================
+
+# --------------------------------------------------------------------------------------------------
+#   Message delivery
+# --------------------------------------------------------------------------------------------------
+def stdout_message_delivery(message: str) -> None:
+    print(f'\n>>>>> Sending:\n{message}\n', flush=True)
 
 # --------------------------------------------------------------------------------------------------
 #   Sign in
@@ -135,7 +142,7 @@ def user_sign_in(
         return http_error_status(error=err)
 
 # --------------------------------------------------------------------------------------------------
-#   Log in
+#   Login
 # --------------------------------------------------------------------------------------------------
 def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
     """User login service."""
@@ -215,12 +222,6 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
         return http_error_status(error=err)
 
 # --------------------------------------------------------------------------------------------------
-#   Message delivery
-# --------------------------------------------------------------------------------------------------
-def stdout_message_delivery(message: str) -> None:
-    print(f'\n################## Sending:\n{message}\n', flush=True)
-
-# --------------------------------------------------------------------------------------------------
 #   Email confirmation
 # --------------------------------------------------------------------------------------------------
 def email_confirmation(
@@ -261,7 +262,7 @@ def email_confirmation(
     '''
     stdout_message_delivery(message=message)
 
-    # On tests the is no channel or method because the parameters are mocked
+    # On tests there is no channel or method because the parameters are mocked
     if channel:
         # Acknowledging the message.
         channel.basic_ack(delivery_tag=method.delivery_tag)
@@ -365,9 +366,29 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
         )
 
         # Awaiting consumer implementation.
-        # email_confirmed_producer = get_producer('email-confirmed')
-        # email_confirmed_producer.publish(topic='email-confirmed', message=email_confirmation_info.user_id)
+        email_confirmed_producer = get_producer('email-confirmed')
+        email_confirmed_producer.publish(topic='email-confirmed', message=email_confirmation_info.user_id)
         confirmed_status.details.data = {'email': email_confirmation_info.user_id, 'name': email_confirmation_info.user_name}
         return confirmed_status
     except httpx.HTTPStatusError as err:
         return http_error_status(error=err)
+
+def enable_user(
+    channel: BlockingChannel,
+    method: Basic.Deliver,
+    properties: BasicProperties,
+    body: bytes
+) -> None:
+    """Mark user email as validated."""
+    user_id = body.decode(config.APP_ENCODING_FORMAT)
+
+    db.upsert_document(
+        database_name=config.USER_CREDENTIALS_DB_NAME,
+        document_id=user_id,
+        fields={'validated': True}
+    )
+
+    # On tests there is no channel or method because the parameters are mocked
+    if channel:
+        # Acknowledging the message.
+        channel.basic_ack(delivery_tag=method.delivery_tag)

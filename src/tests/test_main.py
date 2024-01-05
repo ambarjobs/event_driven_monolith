@@ -464,7 +464,9 @@ class TestMain:
         assert utils.deep_traversal(email_confirmation_data, 'confirmed_datetime') is None
 
         token_data = sch.EmailConfirmationToken(token=test_token).model_dump()
-        response = client.post(url='/confirm-email-api', json=token_data)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_200_OK
 
         content = sch.ServiceStatus.model_validate_json(response.content)
@@ -487,7 +489,9 @@ class TestMain:
             invalid_token = test_token[:-1]
 
         token_data = sch.EmailConfirmationToken(token=invalid_token).model_dump()
-        response = client.post(url='/confirm-email-api', json=token_data)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
         content = sch.ServiceStatus.model_validate_json(response.content)
@@ -511,7 +515,9 @@ class TestMain:
         invalid_token = utils.create_token(payload=token_confirmation_info.model_dump())
 
         token_data = sch.EmailConfirmationToken(token=invalid_token).model_dump()
-        response = client.post(url='/confirm-email-api', json=token_data)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
         content = sch.ServiceStatus.model_validate_json(response.content)
@@ -543,7 +549,9 @@ class TestMain:
         )
 
         token_data = sch.EmailConfirmationToken(token=test_token).model_dump()
-        response = client.post(url='/confirm-email-api', json=token_data)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
         content = sch.ServiceStatus.model_validate_json(response.content)
@@ -580,7 +588,9 @@ class TestMain:
         )
 
         token_data = sch.EmailConfirmationToken(token=test_token).model_dump()
-        response = client.post(url='/confirm-email-api', json=token_data)
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_409_CONFLICT
 
         content = sch.ServiceStatus.model_validate_json(response.content)
@@ -619,10 +629,12 @@ class TestMain:
         )
         assert utils.deep_traversal(email_confirmation_data, 'confirmed_datetime') is None
 
-        response = client.get(url='/confirm-email', params={'token': test_token})
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.get(url='/confirm-email', params={'token': test_token})
         assert response.status_code == status.HTTP_200_OK
 
-        content = response.content.decode('utf-8')
+        content = response.content.decode(config.APP_ENCODING_FORMAT)
         message_parts = (
             'Thank you for confirm your email.',
             'Now you can log in on:',
@@ -643,10 +655,12 @@ class TestMain:
         while invalid_token == test_token:
             invalid_token = test_token[:-1]
 
-        response = client.get(url='/confirm-email', params={'token': invalid_token})
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.get(url='/confirm-email', params={'token': invalid_token})
         assert response.status_code == status.HTTP_200_OK
 
-        content = response.content.decode('utf-8')
+        content = response.content.decode(config.APP_ENCODING_FORMAT)
         message_parts = (
             'Unfortunately an error occurred:',
             'The confirmation link is corrupted or expired.'
@@ -674,10 +688,12 @@ class TestMain:
             document_id=token_confirmation_info.user_id,
         )
 
-        response = client.get(url='/confirm-email', params={'token': test_token})
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.get(url='/confirm-email', params={'token': test_token})
         assert response.status_code == status.HTTP_200_OK
 
-        content = response.content.decode('utf-8')
+        content = response.content.decode(config.APP_ENCODING_FORMAT)
         message_parts = (
             'Unfortunately an error occurred:',
             'There is no sign in corresponding to the confirmation link.'
@@ -711,10 +727,12 @@ class TestMain:
             }
         )
 
-        response = client.get(url='/confirm-email', params={'token': test_token})
+        # Blocks `email-confirmed` event publishing
+        with mock.patch(target='pubsub.PubSub.publish'):
+            response = client.get(url='/confirm-email', params={'token': test_token})
         assert response.status_code == status.HTTP_200_OK
 
-        content = response.content.decode('utf-8')
+        content = response.content.decode(config.APP_ENCODING_FORMAT)
         message_parts = (
             'Your email address was confirmed previously.',
             'You can just log in on:',
