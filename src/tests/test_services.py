@@ -2,8 +2,6 @@
 #  Services module tests
 # ==================================================================================================
 import json
-import random
-import string
 from datetime import datetime, timedelta, UTC
 from unittest import mock
 
@@ -512,7 +510,6 @@ class TestServices:
     def test_check_email_confirmation__invalid_token(
         self,
         email_confirmation_info: sch.EmailConfirmationInfo,
-        test_db: Db,
     ) -> None:
         token_confirmation_info = email_confirmation_info
         del(token_confirmation_info.base_url)
@@ -520,18 +517,7 @@ class TestServices:
         test_token = utils.create_token(payload=token_confirmation_info.model_dump())
         invalid_token = test_token
         while invalid_token == test_token:
-            invalid_token = test_token[:-1] + random.choice(string.ascii_letters)
-
-        email_confimation_db = test_db
-        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
-
-        email_confimation_db.create()
-        email_confimation_db.add_permissions()
-
-        email_confimation_db.create_document(
-            document_id=token_confirmation_info.user_id,
-            body={'email_confirmation_token': invalid_token}
-        )
+            invalid_token = test_token[:-1]
 
         email_confirmation_status = srv.check_email_confirmation(token=invalid_token)
 
@@ -547,24 +533,12 @@ class TestServices:
     def test_check_email_confirmation__invalid_token__payload_validation_error(
         self,
         email_confirmation_info: sch.EmailConfirmationInfo,
-        test_db: Db,
     ) -> None:
         token_confirmation_info = email_confirmation_info
         del(token_confirmation_info.base_url)
 
         token_confirmation_info.user_id = 'invalid id(email)'
         invalid_token = utils.create_token(payload=token_confirmation_info.model_dump())
-
-        email_confimation_db = test_db
-        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
-
-        email_confimation_db.create()
-        email_confimation_db.add_permissions()
-
-        email_confimation_db.create_document(
-            document_id=token_confirmation_info.user_id,
-            body={'email_confirmation_token': invalid_token}
-        )
 
         email_confirmation_status = srv.check_email_confirmation(token=invalid_token)
 
@@ -604,7 +578,6 @@ class TestServices:
     def test_check_email_confirmation__expired_token(
         self,
         email_confirmation_info: sch.EmailConfirmationInfo,
-        test_db: Db,
     ) -> None:
         token_confirmation_info = email_confirmation_info
         del(token_confirmation_info.base_url)
@@ -612,17 +585,6 @@ class TestServices:
         expired_token = utils.create_token(
             payload=token_confirmation_info.model_dump(),
             expiration_hours=-1.0
-        )
-
-        email_confimation_db = test_db
-        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
-
-        email_confimation_db.create()
-        email_confimation_db.add_permissions()
-
-        email_confimation_db.create_document(
-            document_id=token_confirmation_info.user_id,
-            body={'email_confirmation_token': expired_token}
         )
 
         email_confirmation_status = srv.check_email_confirmation(token=expired_token)

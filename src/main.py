@@ -81,12 +81,16 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
 # ==================================================================================================
 #  Email confirmation
 # ==================================================================================================
-@app.post('confirm-email-api')
-def confirm_email_api(token_json: sch.EmailConfirmationToken) -> JSONResponse:
+@app.post('/confirm-email-api')
+def confirm_email_api(token_data: sch.EmailConfirmationToken) -> JSONResponse:
     """Receives email token confirmation through RESTful API."""
-    confirmation_status = srv.check_email_confirmation(token=token_json.token)
-    token = confirmation_status.details.data['token'] if confirmation_status.details.data else ''
-    email = confirmation_status.details.data['email'] if confirmation_status.details.data else ''
+    email_confirmation_token = sch.EmailConfirmationToken.model_validate(token_data)
+    token = email_confirmation_token.token
+    confirmation_status = srv.check_email_confirmation(token=token)
+    email = (
+        confirmation_status.details.data.get('email', '') if confirmation_status.details.data
+        else ''
+    )
     match confirmation_status:
         case (
             sch.ServiceStatus(status='invalid_token') |
@@ -109,12 +113,18 @@ def confirm_email_api(token_json: sch.EmailConfirmationToken) -> JSONResponse:
             status_code = status.HTTP_200_OK
     return JSONResponse(content=confirmation_status.model_dump(), status_code=status_code)
 
-@app.get('confirm-email')
-def confirm_email(token_json: sch.EmailConfirmationToken, request: Request) -> HTMLResponse:
+@app.get('/confirm-email')
+def confirm_email(token: str, request: Request) -> HTMLResponse:
     """Receives email token confirmation through an HTML URL."""
-    confirmation_status = srv.check_email_confirmation(token=token_json.token)
-    token = confirmation_status.details.data['token'] if confirmation_status.details.data else ''
-    email = confirmation_status.details.data['email'] if confirmation_status.details.data else ''
+    confirmation_status = srv.check_email_confirmation(token=token)
+    token = (
+        confirmation_status.details.data.get('token', '')
+        if confirmation_status.details.data else ''
+    )
+    email = (
+        confirmation_status.details.data.get('email', '')
+        if confirmation_status.details.data else ''
+    )
 
     error_msg_template = """Unfortunately an error occurred:</br>{error_msg}"""
     match confirmation_status:

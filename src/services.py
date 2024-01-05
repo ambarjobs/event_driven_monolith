@@ -231,7 +231,7 @@ def email_confirmation(
 ) -> None:
     """Email confirmation service."""
     email_confirmation_info = sch.EmailConfirmationInfo.model_validate_json(body)
-    email_confirmation.base_url = None
+    email_confirmation_info.base_url = None
     token = utils.create_token(
         payload=email_confirmation_info.model_dump(),
         expiration_hours=config.EMAIL_VALIDATION_TIMEOUT_HOURS

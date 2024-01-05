@@ -167,7 +167,7 @@ class TestMain:
             'password': user_credentials.password.get_secret_value()
         }
 
-        response = client.post('/login', data=login_body)
+        response = client.post(url='/login', data=login_body)
         assert response.status_code == status.HTTP_200_OK
 
         login_status = sch.ServiceStatus(**response.json())
@@ -433,3 +433,292 @@ class TestMain:
             this_moment - datetime.fromisoformat(last_login_iso) <
             timedelta(seconds=config.TEST_EXECUTION_LIMIT)
         )
+
+    # ==============================================================================================
+    #   /confirm-email-api endpoint test
+    # ==============================================================================================
+    def test_confirm_email_api__general_case(
+        self,
+        test_db: Db,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={'email_confirmation_token': test_token}
+        )
+
+        email_confirmation_data = email_confimation_db.get_document_by_id(
+            document_id=token_confirmation_info.user_id
+        )
+        assert utils.deep_traversal(email_confirmation_data, 'confirmed_datetime') is None
+
+        token_data = sch.EmailConfirmationToken(token=test_token).model_dump()
+        response = client.post(url='/confirm-email-api', json=token_data)
+        assert response.status_code == status.HTTP_200_OK
+
+        content = sch.ServiceStatus.model_validate_json(response.content)
+        assert content.status == 'confirmed'
+        assert content.error is False
+        assert content.details.description == 'Email confirmed.'
+        assert content.details.data['email'] == token_confirmation_info.user_id
+        assert content.details.data['name'] == token_confirmation_info.user_name
+
+    def test_confirm_email_api__invalid_token(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+        invalid_token = test_token
+        while invalid_token == test_token:
+            invalid_token = test_token[:-1]
+
+        token_data = sch.EmailConfirmationToken(token=invalid_token).model_dump()
+        response = client.post(url='/confirm-email-api', json=token_data)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        content = sch.ServiceStatus.model_validate_json(response.content)
+        assert content.status == 'invalid_token'
+        assert content.error is True
+        assert content.details.description == 'Invalid token.'
+        assert content.details.data['token'] == invalid_token
+        assert content.details.data['errors'] in (
+            'Not enough segments',
+            'Signature verification failed.'
+        )
+
+    def test_confirm_email_api__invalid_token__invalid_payload(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        token_confirmation_info.user_id = 'invalid id(email)'
+        invalid_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        token_data = sch.EmailConfirmationToken(token=invalid_token).model_dump()
+        response = client.post(url='/confirm-email-api', json=token_data)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        content = sch.ServiceStatus.model_validate_json(response.content)
+        assert content.status == 'invalid_token'
+        assert content.error is True
+        assert content.details.description == 'Invalid token.'
+        assert content.details.data['token'] == invalid_token
+        assert content.details.data['errors'][0]['type'] == 'value_error'
+        assert content.details.data['errors'][0]['loc'] == ['user_id']
+
+    def test_confirm_email_api__inexistent_token(
+        self,
+        test_db: Db,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+        )
+
+        token_data = sch.EmailConfirmationToken(token=test_token).model_dump()
+        response = client.post(url='/confirm-email-api', json=token_data)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+        content = sch.ServiceStatus.model_validate_json(response.content)
+        assert content.status == 'inexistent_token'
+        assert content.error is True
+        assert content.details.description == 'Inexistent token for the user id.'
+        assert content.details.data['token'] == test_token
+        assert content.details.data['email'] == token_confirmation_info.user_id
+
+    def test_confirm_email_api__previously_confirmed(
+        self,
+        test_db: Db,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        previous_confirmation_datetime = datetime.now(tz=UTC) - timedelta(hours=-1)
+        previous_confirmation_datetime_iso = previous_confirmation_datetime.isoformat()
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={
+                'email_confirmation_token': test_token,
+                'confirmed_datetime': previous_confirmation_datetime_iso
+            }
+        )
+
+        token_data = sch.EmailConfirmationToken(token=test_token).model_dump()
+        response = client.post(url='/confirm-email-api', json=token_data)
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+        content = sch.ServiceStatus.model_validate_json(response.content)
+        assert content.status == 'previously_confirmed'
+        assert content.error is True
+        assert content.details.description == 'The email was already confirmed.'
+        assert content.details.data['confirmation_datetime'] == previous_confirmation_datetime_iso
+        assert content.details.data['email'] == token_confirmation_info.user_id
+
+    # ==============================================================================================
+    #   /confirm-email endpoint test
+    # ==============================================================================================
+    def test_confirm_email__general_case(
+        self,
+        test_db: Db,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={'email_confirmation_token': test_token}
+        )
+
+        email_confirmation_data = email_confimation_db.get_document_by_id(
+            document_id=token_confirmation_info.user_id
+        )
+        assert utils.deep_traversal(email_confirmation_data, 'confirmed_datetime') is None
+
+        response = client.get(url='/confirm-email', params={'token': test_token})
+        assert response.status_code == status.HTTP_200_OK
+
+        content = response.content.decode('utf-8')
+        message_parts = (
+            'Thank you for confirm your email.',
+            'Now you can log in on:',
+            'to access our platform.'
+        )
+        for message_part in message_parts:
+            assert message_part in content
+
+    def test_confirm_email__invalid_token(
+        self,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+        invalid_token = test_token
+        while invalid_token == test_token:
+            invalid_token = test_token[:-1]
+
+        response = client.get(url='/confirm-email', params={'token': invalid_token})
+        assert response.status_code == status.HTTP_200_OK
+
+        content = response.content.decode('utf-8')
+        message_parts = (
+            'Unfortunately an error occurred:',
+            'The confirmation link is corrupted or expired.'
+        )
+        for message_part in message_parts:
+            assert message_part in content
+
+    def test_confirm_email__inexistent_token(
+        self,
+        test_db: Db,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+        )
+
+        response = client.get(url='/confirm-email', params={'token': test_token})
+        assert response.status_code == status.HTTP_200_OK
+
+        content = response.content.decode('utf-8')
+        message_parts = (
+            'Unfortunately an error occurred:',
+            'There is no sign in corresponding to the confirmation link.'
+        )
+        for message_part in message_parts:
+            assert message_part in content
+
+    def test_confirm_email__previously_confirmed(
+        self,
+        test_db: Db,
+        email_confirmation_info: sch.EmailConfirmationInfo,
+    ) -> None:
+        token_confirmation_info = email_confirmation_info
+        del(token_confirmation_info.base_url)
+
+        test_token = utils.create_token(payload=token_confirmation_info.model_dump())
+
+        email_confimation_db = test_db
+        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+
+        email_confimation_db.create()
+        email_confimation_db.add_permissions()
+
+        previous_confirmation_datetime = datetime.now(tz=UTC) - timedelta(hours=-1)
+        previous_confirmation_datetime_iso = previous_confirmation_datetime.isoformat()
+        email_confimation_db.create_document(
+            document_id=token_confirmation_info.user_id,
+            body={
+                'email_confirmation_token': test_token,
+                'confirmed_datetime': previous_confirmation_datetime_iso
+            }
+        )
+
+        response = client.get(url='/confirm-email', params={'token': test_token})
+        assert response.status_code == status.HTTP_200_OK
+
+        content = response.content.decode('utf-8')
+        message_parts = (
+            'Your email address was confirmed previously.',
+            'You can just log in on:',
+            'to access our platform.',
+        )
+        for message_part in message_parts:
+            assert message_part in content
