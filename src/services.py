@@ -15,7 +15,6 @@ import pubsub as ps
 import schemas as sch
 import utils
 from database import db
-from exceptions import ProducerNotRegisteredError
 from jose import ExpiredSignatureError, JWTError
 
 
@@ -23,12 +22,6 @@ CONSUMERS_SUBSCRIPTIONS = (
     ps.Subscription(topic_name='user-signed-in', consumer_service_name='email_confirmation'),
     ps.Subscription(topic_name='email-confirmed', consumer_service_name='enable_user'),
 )
-
-PRODUCERS_NAMES = (
-    'user_sign_in',
-    'email-confirmed',
-)
-REGISTERED_PRODUCERS = {producer_name: ps.PubSub() for producer_name in PRODUCERS_NAMES}
 
 # --------------------------------------------------------------------------------------------------
 #   Normalized HTTP error status
@@ -62,13 +55,6 @@ def user_is_logged_in(db_user_credentials: dict[str, Any]) -> bool:
         timedelta(hours=config.TOKEN_DEFAULT_EXPIRATION_HOURS)
     )
 
-
-def get_producer(producer_name: str) -> ps.PubSub:
-    """Get the PubSub instance of a registered producer."""
-    producer = REGISTERED_PRODUCERS.get(producer_name)
-    if not producer:
-        raise ProducerNotRegisteredError(f'Producer [{producer_name}] not registered.')
-    return producer
 
 # ==================================================================================================
 #   Services
@@ -126,7 +112,7 @@ def user_sign_in(
                 fields=fields
             )
 
-            sign_in_producer = get_producer('user_sign_in')
+            sign_in_producer = ps.PubSub()
             message = sch.EmailConfirmationInfo(
                 user_id=credentials.id,
                 user_name=user_info.name,
@@ -232,7 +218,6 @@ def email_confirmation(
 ) -> None:
     """Email confirmation service."""
     email_confirmation_info = sch.EmailConfirmationInfo.model_validate_json(body)
-    email_confirmation_info.base_url = None
     token = utils.create_token(
         payload=email_confirmation_info.model_dump(),
         expiration_hours=config.EMAIL_VALIDATION_TIMEOUT_HOURS
@@ -253,7 +238,7 @@ def email_confirmation(
     message = f'''Dear {email_info.confirmation_info.user_name}, thank you for subscribing this PoC.
 
     To confirm you subscription, please access the following link:
-    {email_info.confirmation_info.base_url}/confirm-email/{email_info.email_confirmation_token}
+    {email_info.confirmation_info.base_url}confirm-email?token={email_info.email_confirmation_token}
 
     You have {email_info.validation_expiration_period} hours to confirm your subscription.
 
@@ -365,8 +350,7 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
             fields={'confirmed_datetime': confirmation_datetime}
         )
 
-        # Awaiting consumer implementation.
-        email_confirmed_producer = get_producer('email-confirmed')
+        email_confirmed_producer = ps.PubSub()
         email_confirmed_producer.publish(topic='email-confirmed', message=email_confirmation_info.user_id)
         confirmed_status.details.data = {'email': email_confirmation_info.user_id, 'name': email_confirmation_info.user_name}
         return confirmed_status

@@ -92,6 +92,7 @@ class PubSub:
             error_msg = f'The sending of an event message could not be confirmed: {err}'
             log.error(error_msg)
             raise MessagePublishingConfirmationError(error_msg)
+        self.connection.close()
 
     def consumer_factory(self, topic: str, callback: ConsumerCallback) -> Consumer:
         """Returns a Consumer instance to receive topic messages ."""

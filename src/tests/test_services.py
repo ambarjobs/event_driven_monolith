@@ -10,30 +10,13 @@ import pytest
 from pydantic import SecretStr
 
 import config
-import pubsub as ps
 import schemas as sch
 import services as srv
 import utils
-from exceptions import ProducerNotRegisteredError
 from tests.helpers import Db
 
 
 class TestServices:
-    # ==============================================================================================
-    #   get_producer() function
-    # ==============================================================================================
-    def test_get_producer__general_case(self) -> None:
-        first_producer_name = utils.first(srv.REGISTERED_PRODUCERS)
-
-        test_producer = srv.get_producer(producer_name=first_producer_name)
-
-        assert first_producer_name
-        assert isinstance(test_producer, ps.PubSub)
-
-    def test_get_producer__inexistent_producer(self) -> None:
-        with pytest.raises(ProducerNotRegisteredError):
-            srv.get_producer(producer_name='inexistent_producer')
-
     # ==============================================================================================
     #   user_sign_in service
     # ==============================================================================================

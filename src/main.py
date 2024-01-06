@@ -126,7 +126,11 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
         if confirmation_status.details.data else ''
     )
 
-    error_msg_template = """Unfortunately an error occurred:</br>{error_msg}"""
+    error_msg_template = """<h2>Unfortunately an error occurred:</h2></br>
+    <div class="tab">
+        {error_msg}
+    </div>
+    """
     match confirmation_status:
         case (
             sch.ServiceStatus(status='invalid_token') |
@@ -145,7 +149,9 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
             log.warning(f'Email already confirmed: {email}')
             message = f""" Your email address was confirmed previously. </br>
             You can just log in on:</br>
-                {request.base_url}/login</br>
+                <div class="tab">
+                    {request.base_url}/login</br>
+                </div>
             to access our platform.
             """
         case sch.ServiceStatus(status='http_error'):
@@ -158,13 +164,22 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
             )
         case _:
             log.info(f'User email confirmed: {email}')
-            message = f""" Thank you for confirm your email. </br>
+            message = f""" <h2>Thank you for confirm your email.</h2> </br>
             Now you can log in on:</br>
-                {request.base_url}/login</br>
+                <div class="tab">
+                    {request.base_url}login</br>
+                </div>
             to access our platform.
             """
     # TODO: Use some template mechanism (like Jinja) to provide a better message template.
     content = f"""<html>
+        <head>
+            <style type="text/css">
+            <!--
+            .tab {{ margin-left: 40px; }}
+            -->
+            </style>
+        </head>
         <body>
             <div>
                 {message}
