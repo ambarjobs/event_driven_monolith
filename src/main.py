@@ -6,11 +6,13 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import ExpiredSignatureError, JWTError
 from pydantic import SecretStr
 
 import core
 import schemas as sch
 import services as srv
+import utils
 from config import logging as log
 from core import oauth2_scheme
 
@@ -192,20 +194,46 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
 
 @app.get('/tst')
 def teste(token: Annotated[str, Depends(oauth2_scheme)]):
-# def teste():
-    return {'status': 'OK'}
-# @app.post('/stores/add', status_code=status.HTTP_201_CREATED)
-# def add_store(store: srlz.StoreIn):
-#     """Adiciona uma loja."""
-#     try:
-#         with db_session:
-#             store_name = store.name
-#             mdl.Store(name=store_name)
-#             return {'msg': f'A loja [{store_name}] foi adicionada.'}
-#     except TransactionIntegrityError:
-#         content = {
-#             'error': f'Loja [{store_name}] já existe.',
-#             'code': ErrorCode.store.unique,
-#         }
-#         status_code = status.HTTP_400_BAD_REQUEST
-#         return JSONResponse(content=content, status_code=status_code)
+    """Example endpoint using JWT Oauth2 authentication."""
+    # ------------------------------------------------------------------------------------------
+    #   Output status
+    # ------------------------------------------------------------------------------------------
+    ok_status = sch.ServiceStatus(
+        status='ok',
+        error=False,
+        details=sch.StatusDetails(
+            description='Test was well.'
+        ),
+    )
+
+    invalid_token_status = sch.ServiceStatus(
+        status='invalid_token',
+        error=True,
+        details=sch.StatusDetails(
+            description='Invalid token.'
+        ),
+    )
+
+    expired_token_status = sch.ServiceStatus(
+        status='expired_token',
+        error=True,
+        details=sch.StatusDetails(
+            description='The token has expired.'
+        ),
+    )
+    # ------------------------------------------------------------------------------------------
+    try:
+        payload = utils.get_token_payload(token=token)
+        content_data = ok_status
+        content_data.details.data = payload
+        status_code = status.HTTP_200_OK
+    except (JWTError, ExpiredSignatureError) as err:
+        status_code = status.HTTP_400_BAD_REQUEST
+        match err:
+            case JWTError():
+                content_data = invalid_token_status
+                content_data.details.description = f'Invalid token: {err}'
+            case ExpiredSignatureError():
+                content_data = expired_token_status
+                content_data.details.description = f'The token has expired, log in again: {err}'
+    return JSONResponse(content=content_data.model_dump(), status_code=status_code)
