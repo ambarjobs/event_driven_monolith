@@ -406,13 +406,13 @@ class TestServices:
     ) -> None:
         serialized_confirmation_info = email_confirmation_info.model_dump_json()
 
-        email_confimation_db = test_db
-        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+        email_confirmation_db = test_db
+        email_confirmation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
 
-        email_confimation_db.create()
-        email_confimation_db.add_permissions()
+        email_confirmation_db.create()
+        email_confirmation_db.add_permissions()
 
-        email_confirmation_data = email_confimation_db.get_document_by_id(
+        email_confirmation_data = email_confirmation_db.get_document_by_id(
             document_id=email_confirmation_info.user_id
         )
         assert 'email_confirmation_token' not in email_confirmation_data
@@ -426,7 +426,7 @@ class TestServices:
         assert email_confirmation_info.user_name in captured.out
         assert 'To confirm you subscription, please access the following link:' in captured.out
 
-        email_confirmation_data = email_confimation_db.get_document_by_id(
+        email_confirmation_data = email_confirmation_db.get_document_by_id(
             document_id=email_confirmation_info.user_id
         )
         assert 'email_confirmation_token' in email_confirmation_data
@@ -445,18 +445,18 @@ class TestServices:
 
         test_token = utils.create_token(payload=token_confirmation_info.model_dump())
 
-        email_confimation_db = test_db
-        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+        email_confirmation_db = test_db
+        email_confirmation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
 
-        email_confimation_db.create()
-        email_confimation_db.add_permissions()
+        email_confirmation_db.create()
+        email_confirmation_db.add_permissions()
 
-        email_confimation_db.create_document(
+        email_confirmation_db.create_document(
             document_id=token_confirmation_info.user_id,
             body={'email_confirmation_token': test_token}
         )
 
-        email_confirmation_data = email_confimation_db.get_document_by_id(
+        email_confirmation_data = email_confirmation_db.get_document_by_id(
             document_id=token_confirmation_info.user_id
         )
         assert utils.deep_traversal(email_confirmation_data, 'confirmed_datetime') is None
@@ -471,7 +471,7 @@ class TestServices:
         assert email_confirmation_status.details.data['email'] == token_confirmation_info.user_id
         assert email_confirmation_status.details.data['name'] == token_confirmation_info.user_name
 
-        email_confirmation_data = email_confimation_db.get_document_by_id(
+        email_confirmation_data = email_confirmation_db.get_document_by_id(
             document_id=email_confirmation_info.user_id
         )
 
@@ -541,13 +541,13 @@ class TestServices:
 
         test_token = utils.create_token(payload=token_confirmation_info.model_dump())
 
-        email_confimation_db = test_db
-        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+        email_confirmation_db = test_db
+        email_confirmation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
 
-        email_confimation_db.create()
-        email_confimation_db.add_permissions()
+        email_confirmation_db.create()
+        email_confirmation_db.add_permissions()
 
-        email_confimation_db.create_document(document_id=token_confirmation_info.user_id)
+        email_confirmation_db.create_document(document_id=token_confirmation_info.user_id)
 
         # Blocks `email-confirmed` event publishing
         with mock.patch(target='pubsub.PubSub.publish'):
@@ -590,15 +590,15 @@ class TestServices:
 
         test_token = utils.create_token(payload=token_confirmation_info.model_dump())
 
-        email_confimation_db = test_db
-        email_confimation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
+        email_confirmation_db = test_db
+        email_confirmation_db.database_name = config.EMAIL_CONFIRMATION_DB_NAME
 
-        email_confimation_db.create()
-        email_confimation_db.add_permissions()
+        email_confirmation_db.create()
+        email_confirmation_db.add_permissions()
 
         previous_confirmation_datetime = datetime.now(tz=UTC) - timedelta(hours=-1)
         previous_confirmation_datetime_iso = previous_confirmation_datetime.isoformat()
-        email_confimation_db.create_document(
+        email_confirmation_db.create_document(
             document_id=token_confirmation_info.user_id,
             body={
                 'email_confirmation_token': test_token,

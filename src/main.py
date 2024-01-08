@@ -160,7 +160,7 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
             error_code = confirmation_status.details.error_code
             log.error(f'confirm-mail endpoint error: {error_code}')
             message = error_msg_template.format(
-                error_msg=f"""Our servers couldm't process your requests (HTTP error: {error_code})<br>
+                error_msg=f"""Our servers couldn't process your requests (HTTP error: {error_code})<br>
                 Try to click on the link later, if the error persists, contact our support.
                 """
             )
@@ -193,7 +193,7 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
 
 
 @app.get('/tst')
-def teste(token: Annotated[str, Depends(oauth2_scheme)]):
+def test(token: Annotated[str, Depends(oauth2_scheme)]):
     """Example endpoint using JWT Oauth2 authentication."""
     # ------------------------------------------------------------------------------------------
     #   Output status

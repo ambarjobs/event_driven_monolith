@@ -59,7 +59,7 @@ class TestPubSub:
     # ==============================================================================================
     #   Producer
     # ==============================================================================================
-    def test_publish__conection_reutilization(self) -> None:
+    def test_publish__connection_no_reutilization(self) -> None:
 
         def start_consumer_thread(
             consumer: ps.Consumer
@@ -93,11 +93,8 @@ class TestPubSub:
         pub_sub = ps.PubSub()
         pub_sub.publish(topic=test_topic, message=test_message)
 
-        pub_sub.publish(topic=test_topic, message=test_message)
+        assert pub_sub.connection.is_closed
 
-        assert pub_sub.connection.is_open
-
-        pub_sub.connection.close()
 
     # ==============================================================================================
     #   Consumer / Producer
@@ -135,7 +132,6 @@ class TestPubSub:
 
         pub_sub = ps.PubSub()
         pub_sub.publish(topic=test_topic, message=test_message)
-        pub_sub.connection.close()
 
         captured = capsys.readouterr()
 
