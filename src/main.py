@@ -61,6 +61,10 @@ def signin(
 
 @app.post('/login')
 def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse:
+    """Login endpoint.
+
+    Returns a JWT token to access other endpoints through OAuth2.
+    """
     credentials =oauth2form_to_credentials(form_data=form)
     login_status = srv.authentication(credentials=credentials)
     match login_status:
@@ -194,7 +198,7 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
 
 @app.get('/tst')
 def test(token: Annotated[str, Depends(oauth2_scheme)]):
-    """Example endpoint using JWT Oauth2 authentication."""
+    """Example endpoint using JWT OAuth2 authentication."""
     # ------------------------------------------------------------------------------------------
     #   Output status
     # ------------------------------------------------------------------------------------------
