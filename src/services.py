@@ -19,7 +19,7 @@ from jose import ExpiredSignatureError, JWTError
 
 
 CONSUMERS_SUBSCRIPTIONS = (
-    ps.Subscription(topic_name='user-signed-in', consumer_service_name='email_confirmation'),
+    ps.Subscription(topic_name='user-signed-up', consumer_service_name='email_confirmation'),
     ps.Subscription(topic_name='email-confirmed', consumer_service_name='enable_user'),
 )
 
@@ -69,25 +69,25 @@ def stdout_message_delivery(message: str) -> None:
 # --------------------------------------------------------------------------------------------------
 #   Sign in
 # --------------------------------------------------------------------------------------------------
-def user_sign_in(
+def user_sign_up(
     credentials: sch.UserCredentials,
     user_info: sch.UserInfo,
     base_url: str,
 ) -> sch.ServiceStatus:
-    """User sign in service."""
+    """User sign up service."""
     # ----------------------------------------------------------------------------------------------
     #   Output status
     # ----------------------------------------------------------------------------------------------
-    successful_sign_in_status = sch.ServiceStatus(
-            status='successful_sign_in',
+    successful_sign_up_status = sch.ServiceStatus(
+            status='successful_sign_up',
             error=False,
-            details=sch.StatusDetails(description='User signed in successfully.'),
+            details=sch.StatusDetails(description='User signed up successfully.'),
         )
 
-    user_already_signed_in_status = sch.ServiceStatus(
-            status='user_already_signed_in',
+    user_already_signed_up_status = sch.ServiceStatus(
+            status='user_already_signed_up',
             error=True,
-            details=sch.StatusDetails(description='User already signed in.'),
+            details=sch.StatusDetails(description='User already signed up.'),
         )
     # ----------------------------------------------------------------------------------------------
 
@@ -112,18 +112,18 @@ def user_sign_in(
                 fields=fields
             )
 
-            sign_in_producer = ps.PubSub()
+            sign_up_producer = ps.PubSub()
             message = sch.EmailConfirmationInfo(
                 user_id=credentials.id,
                 user_name=user_info.name,
                 base_url=base_url,
             ).model_dump_json()
-            sign_in_producer.publish(topic='user-signed-in', message=message)
+            sign_up_producer.publish(topic='user-signed-up', message=message)
 
-            return successful_sign_in_status
+            return successful_sign_up_status
 
-        user_already_signed_in_status.details.data = {'version': version}
-        return user_already_signed_in_status
+        user_already_signed_up_status.details.data = {'version': version}
+        return user_already_signed_up_status
     except httpx.HTTPStatusError as err:
         return http_error_status(error=err)
 
@@ -137,12 +137,12 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
         #   Output status
         # ------------------------------------------------------------------------------------------
         # Some situations below are aggregated into the same message in manner to avoid
-        # username prospection.
+        # username prospecting.
         incorrect_login_status = sch.ServiceStatus(
             status='incorrect_login_credentials',
             error=True,
             details=sch.StatusDetails(
-                description='Invalid user or password. Check if user has signed in.'
+                description='Invalid user or password. Check if user has signed up.'
             ),
         )
 
@@ -153,7 +153,7 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
         )
 
         user_already_logged_in_status = sch.ServiceStatus(
-            status='user_already_signed_in',
+            status='user_already_signed_up',
             error=True,
             details=sch.StatusDetails(description='User was already logged in.'),
         )

@@ -21,9 +21,9 @@ client = TestClient(app=app)
 
 class TestMain:
     # ==============================================================================================
-    #   /signin endpoint test
+    #   /signup endpoint test
     # ==============================================================================================
-    def test_signin__general_case(
+    def test_signup__general_case(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -54,16 +54,16 @@ class TestMain:
         credentials_db.add_permissions()
         info_db.add_permissions()
 
-        # Blocks `user-signed-in` event publishing
+        # Blocks `user-signed-up` event publishing
         with mock.patch(target='pubsub.PubSub.publish'):
-            response = client.post('/signin', json=body)
+            response = client.post('/signup', json=body)
 
             assert response.status_code == status.HTTP_201_CREATED
             assert response.json() == {
-                'status': 'successful_sign_in',
+                'status': 'successful_sign_up',
                 'error': False,
                 'details': {
-                    'description': 'User signed in successfully.'
+                    'description': 'User signed up successfully.'
                 }
             }
 
@@ -85,7 +85,7 @@ class TestMain:
         assert info_doc.get('address') == user_info.address
         assert 'phone_number' not in info_doc
 
-    def test_signin__already_exists(
+    def test_signup__already_exists(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -114,22 +114,22 @@ class TestMain:
         credentials_db.add_permissions()
         info_db.add_permissions()
 
-        # Blocks `user-signed-in` event publishing
+        # Blocks `user-signed-up` event publishing
         with mock.patch(target='pubsub.PubSub.publish'):
-            client.post('/signin', json=body)
+            client.post('/signup', json=body)
 
-            # Try to sign in a pre existent user.
-            response = client.post('/signin', json=body)
+            # Try to sign up a pre existent user.
+            response = client.post('/signup', json=body)
 
             credentials_doc = credentials_db.get_document_by_id(
                 document_id=user_credentials.id,
             )
 
             expected_result = {
-                'status': 'user_already_signed_in',
+                'status': 'user_already_signed_up',
                 'error': True,
                 'details': {
-                    'description': 'User already signed in.',
+                    'description': 'User already signed up.',
                     'data': {
                         'version': credentials_doc['_rev']
                     }
@@ -154,13 +154,13 @@ class TestMain:
         credentials_db.create()
         credentials_db.add_permissions()
 
-        sign_in_hash = utils.calc_hash(password=user_credentials.password)
-        sign_in_body = {
-            'hash': sign_in_hash,
+        sign_up_hash = utils.calc_hash(password=user_credentials.password)
+        sign_up_body = {
+            'hash': sign_up_hash,
             'validated': True
         }
-        # Minimal sign in.
-        credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+        # Minimal sign up.
+        credentials_db.create_document(document_id=user_credentials.id, body=sign_up_body)
 
         login_body = {
             'username': user_credentials.id,
@@ -203,13 +203,13 @@ class TestMain:
         credentials_db.create()
         credentials_db.add_permissions()
 
-        sign_in_hash = utils.calc_hash(password=user_credentials.password)
-        sign_in_body = {
-            'hash': sign_in_hash,
+        sign_up_hash = utils.calc_hash(password=user_credentials.password)
+        sign_up_body = {
+            'hash': sign_up_hash,
             'validated': True
         }
-        # Minimal sign in.
-        credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+        # Minimal sign up.
+        credentials_db.create_document(document_id=user_credentials.id, body=sign_up_body)
 
         login_body = {
             'username': 'inexistent@user.id',
@@ -224,7 +224,7 @@ class TestMain:
         assert login_status.status == 'incorrect_login_credentials'
         assert login_status.error is True
         assert login_status.details.description == (
-            'Invalid user or password. Check if user has signed in.'
+            'Invalid user or password. Check if user has signed up.'
         )
         # No token sent (`token` would come inside `data`).
         assert login_status.details.data is None
@@ -240,13 +240,13 @@ class TestMain:
         credentials_db.create()
         credentials_db.add_permissions()
 
-        sign_in_hash = utils.calc_hash(password=user_credentials.password)
-        sign_in_body = {
-            'hash': sign_in_hash,
+        sign_up_hash = utils.calc_hash(password=user_credentials.password)
+        sign_up_body = {
+            'hash': sign_up_hash,
             'validated': True
         }
-        # Minimal sign in.
-        credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+        # Minimal sign up.
+        credentials_db.create_document(document_id=user_credentials.id, body=sign_up_body)
 
         login_body = {
             'username': user_credentials.id,
@@ -261,7 +261,7 @@ class TestMain:
         assert login_status.status == 'incorrect_login_credentials'
         assert login_status.error is True
         assert login_status.details.description == (
-            'Invalid user or password. Check if user has signed in.'
+            'Invalid user or password. Check if user has signed up.'
         )
         # No token sent (`token` would come inside `data`).
         assert login_status.details.data is None
@@ -277,9 +277,9 @@ class TestMain:
         credentials_db.create()
         credentials_db.add_permissions()
 
-        sign_in_body = {}
-        # Minimal sign in.
-        credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+        sign_up_body = {}
+        # Minimal sign up.
+        credentials_db.create_document(document_id=user_credentials.id, body=sign_up_body)
 
         login_body = {
             'username': user_credentials.id,
@@ -294,7 +294,7 @@ class TestMain:
         assert login_status.status == 'incorrect_login_credentials'
         assert login_status.error is True
         assert login_status.details.description == (
-            'Invalid user or password. Check if user has signed in.'
+            'Invalid user or password. Check if user has signed up.'
         )
         # No token sent (`token` would come inside `data`).
         assert login_status.details.data is None
@@ -310,12 +310,12 @@ class TestMain:
         credentials_db.create()
         credentials_db.add_permissions()
 
-        sign_in_hash = utils.calc_hash(password=user_credentials.password)
-        sign_in_body = {
-            'hash': sign_in_hash,
+        sign_up_hash = utils.calc_hash(password=user_credentials.password)
+        sign_up_body = {
+            'hash': sign_up_hash,
         }
-        # Minimal sign in.
-        credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+        # Minimal sign up.
+        credentials_db.create_document(document_id=user_credentials.id, body=sign_up_body)
 
         login_body = {
             'username': user_credentials.id,
@@ -347,9 +347,9 @@ class TestMain:
         credentials_db.create()
         credentials_db.add_permissions()
 
-        sign_in_hash = utils.calc_hash(password=user_credentials.password)
-        sign_in_body = {
-            'hash': sign_in_hash,
+        sign_up_hash = utils.calc_hash(password=user_credentials.password)
+        sign_up_body = {
+            'hash': sign_up_hash,
             'validated': True,
             # Logged in before this test.
             'last_login': datetime.isoformat(
@@ -357,8 +357,8 @@ class TestMain:
                 timedelta(seconds=config.TEST_EXECUTION_LIMIT)
             )
         }
-        # Minimal sign in.
-        credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+        # Minimal sign up.
+        credentials_db.create_document(document_id=user_credentials.id, body=sign_up_body)
 
         login_body = {
             'username': user_credentials.id,
@@ -370,7 +370,7 @@ class TestMain:
 
         login_status = sch.ServiceStatus(**response.json())
 
-        assert login_status.status == 'user_already_signed_in'
+        assert login_status.status == 'user_already_signed_up'
         assert login_status.error is True
         assert login_status.details.description == (
             'User was already logged in.'
@@ -390,9 +390,9 @@ class TestMain:
         credentials_db.create()
         credentials_db.add_permissions()
 
-        sign_in_hash = utils.calc_hash(password=user_credentials.password)
-        sign_in_body = {
-            'hash': sign_in_hash,
+        sign_up_hash = utils.calc_hash(password=user_credentials.password)
+        sign_up_body = {
+            'hash': sign_up_hash,
             'validated': True,
             # `last_login` expired one hour ago.
             'last_login': datetime.isoformat(
@@ -400,8 +400,8 @@ class TestMain:
                 timedelta(hours=config.TOKEN_DEFAULT_EXPIRATION_HOURS + 1.0)
             )
         }
-        # Minimal sign in.
-        credentials_db.create_document(document_id=user_credentials.id, body=sign_in_body)
+        # Minimal sign up.
+        credentials_db.create_document(document_id=user_credentials.id, body=sign_up_body)
 
         login_body = {
             'username': user_credentials.id,
@@ -696,7 +696,7 @@ class TestMain:
         content = response.content.decode(config.APP_ENCODING_FORMAT)
         message_parts = (
             'Unfortunately an error occurred:',
-            'There is no sign in corresponding to the confirmation link.'
+            'There is no sign up corresponding to the confirmation link.'
         )
         for message_part in message_parts:
             assert message_part in content

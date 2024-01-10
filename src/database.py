@@ -20,7 +20,7 @@ class DbCredentials(NamedTuple):
 
 
 class Index(NamedTuple):
-    """Databse index structure."""
+    """Database index structure."""
     name: str
     fields: Sequence[str]
 

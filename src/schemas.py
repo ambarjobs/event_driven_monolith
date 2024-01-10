@@ -31,7 +31,7 @@ class ServiceStatus(BaseModel):
 
 
 class UserCredentials(BaseModel):
-    """User credentials schema (used for login and signin)."""
+    """User credentials schema (used for login and sign up)."""
     id: EmailStr
     password: SecretStr = Field(max_length=PASSWD_MAX_LENGHT)
 

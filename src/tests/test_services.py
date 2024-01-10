@@ -18,9 +18,9 @@ from tests.helpers import Db
 
 class TestServices:
     # ==============================================================================================
-    #   user_sign_in service
+    #   user_sign_up service
     # ==============================================================================================
-    def test_user_sign_in__general_case(
+    def test_user_sign_up__general_case(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -45,7 +45,7 @@ class TestServices:
         info_db.add_permissions()
 
         with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
-            sign_in_status = srv.user_sign_in(
+            sign_up_status = srv.user_sign_up(
                 credentials=user_credentials,
                 user_info=user_info,
                 base_url=base_url,
@@ -57,16 +57,16 @@ class TestServices:
             }
             expected_event_message = json.dumps(expected_event, separators=(',', ':'))
             mock_publish.assert_called_with(
-                topic='user-signed-in',
+                topic='user-signed-up',
                 message=expected_event_message,
             )
 
             expected_status = sch.ServiceStatus(
-                status='successful_sign_in',
+                status='successful_sign_up',
                 error=False,
-                details = sch.StatusDetails(description='User signed in successfully.')
+                details = sch.StatusDetails(description='User signed up successfully.')
             )
-            assert sign_in_status == expected_status
+            assert sign_up_status == expected_status
 
         credentials_doc = credentials_db.get_document_by_id(
             document_id=user_credentials.id,
@@ -84,7 +84,7 @@ class TestServices:
         assert info_doc.get('address') == user_info.address
         assert 'phone_number' not in info_doc
 
-    def test_user_sign_in__already_signed_in(
+    def test_user_sign_up__already_signed_up(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -107,12 +107,12 @@ class TestServices:
         credentials_db.add_permissions()
         info_db.add_permissions()
 
-        # Blocks `user-signed-in` event publishing
+        # Blocks `user-signed-up` event publishing
         with mock.patch(target='pubsub.PubSub.publish'):
-            srv.user_sign_in(credentials=user_credentials, user_info=user_info, base_url=base_url)
+            srv.user_sign_up(credentials=user_credentials, user_info=user_info, base_url=base_url)
 
-            # Try to sign in again an user already signed in.
-            sign_in_status = srv.user_sign_in(
+            # Try to sign up again an user already signed up.
+            sign_up_status = srv.user_sign_up(
                 credentials=user_credentials,
                 user_info=user_info,
                 base_url=base_url
@@ -121,14 +121,14 @@ class TestServices:
                 document_id=user_credentials.id,
             )
             expected_status = sch.ServiceStatus(
-                status='user_already_signed_in',
+                status='user_already_signed_up',
                 error=True,
                 details = sch.StatusDetails(
-                    description='User already signed in.',
+                    description='User already signed up.',
                     data={'version': credentials_doc['_rev']}
                 )
             )
-            assert sign_in_status == expected_status
+            assert sign_up_status == expected_status
 
     # ==============================================================================================
     #   authentication service
@@ -196,7 +196,7 @@ class TestServices:
         auth_status = srv.authentication(credentials=user_credentials)
         assert auth_status.status == 'incorrect_login_credentials'
         assert auth_status.details.description == (
-            'Invalid user or password. Check if user has signed in.'
+            'Invalid user or password. Check if user has signed up.'
         )
         assert auth_status.error is True
 
@@ -227,7 +227,7 @@ class TestServices:
         auth_status = srv.authentication(credentials=user_credentials)
         assert auth_status.status == 'incorrect_login_credentials'
         assert auth_status.details.description == (
-            'Invalid user or password. Check if user has signed in.'
+            'Invalid user or password. Check if user has signed up.'
         )
         assert auth_status.error is True
 
@@ -260,7 +260,7 @@ class TestServices:
         auth_status = srv.authentication(credentials=user_credentials)
         assert auth_status.status == 'incorrect_login_credentials'
         assert auth_status.details.description == (
-            'Invalid user or password. Check if user has signed in.'
+            'Invalid user or password. Check if user has signed up.'
         )
         assert auth_status.error is True
 
@@ -329,7 +329,7 @@ class TestServices:
         )
 
         auth_status = srv.authentication(credentials=user_credentials)
-        assert auth_status.status == 'user_already_signed_in'
+        assert auth_status.status == 'user_already_signed_up'
         assert auth_status.details.description == 'User was already logged in.'
         assert auth_status.error is True
 

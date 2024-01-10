@@ -48,7 +48,7 @@ On the upper left side there is a legend showing the diagram's main components t
 
 The project created for this PoC is a platform where the users can buy cooking `recipes`.
 
-There is a `sign in` functionality with `email confirmation`.
+There is a `sign up` functionality with `email confirmation`.
 
 The `login` process returns a `JWT` token to be used to access the rest of the system through `OAuth2`.
 

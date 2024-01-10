@@ -33,30 +33,30 @@ def oauth2form_to_credentials(form_data: OAuth2PasswordRequestForm) -> sch.UserC
 # ==================================================================================================
 #  Sign in
 # ==================================================================================================
-@app.post('/signin')
-def signin(
+@app.post('/signup')
+def signup(
     credentials: sch.UserCredentials,
     user_info: sch.UserInfo,
     request: Request,
 ) -> JSONResponse:
     """Sign in endpoint."""
-    sign_in_status = srv.user_sign_in(
+    sign_up_status = srv.user_sign_up(
         credentials=credentials,
         user_info=user_info,
         base_url=str(request.base_url)
     )
-    match sign_in_status:
-        case sch.ServiceStatus(status='user_already_signed_in'):
-            log.warning(f'User already signed in: {credentials.id}')
+    match sign_up_status:
+        case sch.ServiceStatus(status='user_already_signed_up'):
+            log.warning(f'User already signed up: {credentials.id}')
             status_code = status.HTTP_409_CONFLICT
         case sch.ServiceStatus(status='http_error'):
-            error_code = sign_in_status.details.error_code
+            error_code = sign_up_status.details.error_code
             log.error(f'Signin endpoint error: {error_code}')
             status_code = error_code or 500
         case _:
-            log.info(f'User signed in: {credentials.id}')
+            log.info(f'User signed up: {credentials.id}')
             status_code = status.HTTP_201_CREATED
-    return JSONResponse(content=sign_in_status.model_dump(), status_code=status_code)
+    return JSONResponse(content=sign_up_status.model_dump(), status_code=status_code)
 
 
 @app.post('/login')
@@ -71,7 +71,7 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
         case (
             sch.ServiceStatus(status='incorrect_login_credentials') |
             sch.ServiceStatus(status='email_not_validated') |
-            sch.ServiceStatus(status='user_already_signed_in')
+            sch.ServiceStatus(status='user_already_signed_up')
         ):
             log.warning(f'Login non authorized: {credentials.id}')
             status_code = status.HTTP_401_UNAUTHORIZED
@@ -149,7 +149,7 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
         case sch.ServiceStatus(status='inexistent_token'):
             log.error(f'Inexistent token: {token}')
             message = error_msg_template.format(
-                error_msg='There is no sign in corresponding to the confirmation link.'
+                error_msg='There is no sign up corresponding to the confirmation link.'
             )
         case sch.ServiceStatus(status='previously_confirmed'):
             log.warning(f'Email already confirmed: {email}')
