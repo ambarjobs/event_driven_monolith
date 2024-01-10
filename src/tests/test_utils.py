@@ -8,7 +8,7 @@ from jose import ExpiredSignatureError, jwt, JWTError
 from pydantic import SecretStr
 
 import utils
-from exceptions import InvalidAccesTokenKeyError
+from exceptions import InvalidAccessTokenKeyError
 
 class TestUtils:
     # ----------------------------------------------------------------------------------------------
@@ -155,13 +155,13 @@ class TestUtils:
     def test_create_token__no_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         test_payload: dict = {}
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value=None)
-        with pytest.raises(InvalidAccesTokenKeyError):
+        with pytest.raises(InvalidAccessTokenKeyError):
             utils.create_token(payload=test_payload, expiration_hours=1.0)
 
     def test_create_token__invalid_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         test_payload: dict = {}
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value='')
-        with pytest.raises(InvalidAccesTokenKeyError):
+        with pytest.raises(InvalidAccessTokenKeyError):
             utils.create_token(payload=test_payload, expiration_hours=1.0)
 
     # ----------------------------------------------------------------------------------------------
@@ -200,7 +200,7 @@ class TestUtils:
         token = utils.create_token(payload=test_payload, expiration_hours=1.0)
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value=None)
 
-        with pytest.raises(InvalidAccesTokenKeyError):
+        with pytest.raises(InvalidAccessTokenKeyError):
             utils.get_token_payload(token=token)
 
     def test_get_token_payload__invalid_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -208,7 +208,7 @@ class TestUtils:
         token = utils.create_token(payload=test_payload, expiration_hours=1.0)
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value='')
 
-        with pytest.raises(InvalidAccesTokenKeyError):
+        with pytest.raises(InvalidAccessTokenKeyError):
             utils.get_token_payload(token=token)
 
     # ----------------------------------------------------------------------------------------------

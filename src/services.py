@@ -172,7 +172,7 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
             )
         except httpx.HTTPStatusError as err:
             if err.response.status_code == status.HTTP_404_NOT_FOUND:
-                # Usuário não encontrado
+                # User not found
                 return incorrect_login_status
             return http_error_status(error=err)
 
@@ -302,7 +302,7 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
         try:
             token_payload = utils.get_token_payload(token=token)
         except ExpiredSignatureError:
-            # It's not possible to get user_info from token payload beacuse it's expired (exception).
+            # It's not possible to get user_info from token payload because it's expired (exception).
             # TODO: Maybe to pass `id` and `name` in addition to token to `confirm_email` endpoint
             #       This would duplicate information inside the token (maybe there is a better
             #       solution).

@@ -14,7 +14,7 @@ class InvalidCouchDBCredentialError(Exception):
 # --------------------------------------------------------------------------------------------------
 #   Authentication
 # --------------------------------------------------------------------------------------------------
-class InvalidAccesTokenKeyError(Exception):
+class InvalidAccessTokenKeyError(Exception):
     """Invalid access token key."""
     ...
 

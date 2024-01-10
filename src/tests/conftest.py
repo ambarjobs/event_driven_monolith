@@ -164,7 +164,7 @@ def another_pub_sub() -> ps.PubSub:
 
 @pytest.fixture
 def consumer_callback() -> ps.ConsumerCallback:
-    """Test Consumer callback funtion factory."""
+    """Test Consumer callback function factory."""
     def callback_function(
         channel: BlockingChannel,
         method: Basic.Deliver,
@@ -199,7 +199,7 @@ def user_info(user_id: str, user_name: str) -> sch.UserInfo:
     return sch.UserInfo(
         id=user_id,
         name=user_name,
-        address=f'{config.TEST_PREFIX.title()} Streeet, 123'
+        address=f'{config.TEST_PREFIX.title()} Street, 123'
     )
 
 

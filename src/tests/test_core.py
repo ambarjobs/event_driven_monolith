@@ -90,7 +90,7 @@ class TestCore:
                     )
 
     @pytest.mark.filterwarnings('ignore::pytest.PytestUnhandledThreadExceptionWarning')
-    def test_start_consumers__inxistent_consumer_service(self) -> None:
+    def test_start_consumers__inexistent_consumer_service(self) -> None:
         test_subscription = ps.Subscription(topic_name='test_topic', consumer_service_name='inexistent')
         subscriptions = (test_subscription,)
 
