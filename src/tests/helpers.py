@@ -93,7 +93,7 @@ class Db:
 
     def check_document(self, document_id: str) -> bool:
         """Check if document exists on database."""
-        command_url = f'{self.database_name}/{document_id}'
+        command_url = f'{db.url}/{self.database_name}/{document_id}'
         response = httpx.head(url=command_url, auth=db.app_credentials)
         return bool(response.headers.get('etag'))
 

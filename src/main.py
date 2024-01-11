@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import ExpiredSignatureError, JWTError
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 import core
 import schemas as sch
@@ -18,6 +18,7 @@ from core import oauth2_scheme
 
 
 core.init_app_databases(core.APP_DATABASES_INFO)
+core.create_admin_user()
 core.start_consumers(subscriptions=srv.CONSUMERS_SUBSCRIPTIONS)
 
 app = FastAPI()
@@ -65,13 +66,28 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
 
     Returns a JWT token to access other endpoints through OAuth2.
     """
-    credentials =oauth2form_to_credentials(form_data=form)
+    # ----------------------------------------------------------------------------------------------
+    #   Output status
+    # ----------------------------------------------------------------------------------------------
+    invalid_credentials_format_status = sch.ServiceStatus(
+            status='invalid_credentials_format',
+            error=True,
+            details=sch.StatusDetails(description='The credentials are in an invalid format.'),
+        )
+    # ----------------------------------------------------------------------------------------------
+    try:
+        credentials =oauth2form_to_credentials(form_data=form)
+    except ValidationError as err:
+        invalid_credentials_format_status.details.data = {'errors': err.errors()}
+        return JSONResponse(
+            content=invalid_credentials_format_status.model_dump(),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     login_status = srv.authentication(credentials=credentials)
     match login_status:
         case (
             sch.ServiceStatus(status='incorrect_login_credentials') |
-            sch.ServiceStatus(status='email_not_validated') |
-            sch.ServiceStatus(status='user_already_signed_up')
+            sch.ServiceStatus(status='email_not_validated')
         ):
             log.warning(f'Login non authorized: {credentials.id}')
             status_code = status.HTTP_401_UNAUTHORIZED
@@ -79,7 +95,10 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
             error_code = login_status.details.error_code
             log.error(f'login endpoint error: {error_code}')
             status_code = error_code or 500
-        case _:
+        case sch.ServiceStatus(status='user_already_logged_in'):
+            log.info(f'User already logged in: {credentials.id}')
+            status_code = status.HTTP_200_OK
+        case sch.ServiceStatus(status='successfully_logged_in'):
             log.info(f'User logged in: {credentials.id}')
             status_code = status.HTTP_200_OK
     return JSONResponse(content=login_status.model_dump(), status_code=status_code)

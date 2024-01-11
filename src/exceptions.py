@@ -4,10 +4,15 @@
 
 
 # --------------------------------------------------------------------------------------------------
-#   Database
+#   Credentials
 # --------------------------------------------------------------------------------------------------
 class InvalidCouchDBCredentialError(Exception):
     """Error obtaining CouchDB admin credentials."""
+    ...
+
+
+class InvalidAppAdminCredentialsError(Exception):
+    """Invalid credentials for the application administrator."""
     ...
 
 

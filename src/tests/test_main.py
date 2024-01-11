@@ -366,17 +366,33 @@ class TestMain:
         }
 
         response = client.post('/login', data=login_body)
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_200_OK
 
         login_status = sch.ServiceStatus(**response.json())
 
-        assert login_status.status == 'user_already_signed_up'
-        assert login_status.error is True
+        assert login_status.status == 'user_already_logged_in'
+        assert login_status.error is False
         assert login_status.details.description == (
-            'User was already logged in.'
+            'User was already logged in and last token is still valid.'
         )
-        # No token sent (`token` would come inside `data`).
-        assert login_status.details.data is None
+
+        assert 'new_token' in login_status.details.data
+        assert len(login_status.details.data['new_token']) > 0
+
+        db_user_credentials = credentials_db.get_document_by_id(
+            document_id=user_credentials.id,
+        )
+
+        assert db_user_credentials.get('_id') == user_credentials.id
+
+        this_moment = datetime.now(tz=UTC)
+        last_login_iso = db_user_credentials.get('last_login')
+        assert last_login_iso is not None
+        # Logged in on this test.
+        assert (
+            this_moment - datetime.fromisoformat(last_login_iso) <
+            timedelta(seconds=config.TEST_EXECUTION_LIMIT)
+        )
 
     def test_login__user_already_logged_in__last_login_expired(
         self,
@@ -416,6 +432,7 @@ class TestMain:
         assert login_status.status == 'successfully_logged_in'
         assert login_status.error is False
         assert login_status.details.description == 'User has successfully logged in.'
+
         assert 'token' in login_status.details.data
         assert len(login_status.details.data['token']) > 0
 

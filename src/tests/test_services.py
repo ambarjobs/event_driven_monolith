@@ -201,7 +201,7 @@ class TestServices:
         assert auth_status.error is True
 
         # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        auth_status.details.data is None
+        assert auth_status.details.data is None
 
     def test_authentication__incorrect_password(
         self,
@@ -232,7 +232,7 @@ class TestServices:
         assert auth_status.error is True
 
         # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        auth_status.details.data is None
+        assert auth_status.details.data is None
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -265,7 +265,7 @@ class TestServices:
         assert auth_status.error is True
 
         # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        auth_status.details.data is None
+        assert auth_status.details.data is None
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -297,7 +297,7 @@ class TestServices:
         assert auth_status.error is True
 
         # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        auth_status.details.data is None
+        assert auth_status.details.data is None
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -314,6 +314,8 @@ class TestServices:
         credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
         test_hash = utils.calc_hash(user_credentials.password)
 
+        before_login = datetime.now(tz=UTC)
+
         credentials_db.create()
         credentials_db.add_permissions()
 
@@ -329,12 +331,24 @@ class TestServices:
         )
 
         auth_status = srv.authentication(credentials=user_credentials)
-        assert auth_status.status == 'user_already_signed_up'
-        assert auth_status.details.description == 'User was already logged in.'
-        assert auth_status.error is True
+        assert auth_status.status == 'user_already_logged_in'
+        assert (
+            auth_status.details.description ==
+            'User was already logged in and last token is still valid.'
+        )
+        assert auth_status.error is False
 
-        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        auth_status.details.data is None
+        token = auth_status.details.data['new_token']
+        token_payload = utils.get_token_payload(token=token)
+        assert utils.deep_traversal(token_payload, 'sub') == user_credentials.id
+
+        credentials_data = credentials_db.get_document_by_id(user_credentials.id)
+
+        assert (
+            datetime.fromisoformat(
+                utils.deep_traversal(credentials_data, 'last_login')
+            ) - before_login > timedelta(seconds=0)
+        )
 
     def test_authentication__expired_last_login(
         self,

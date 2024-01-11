@@ -1,9 +1,12 @@
 # ==================================================================================================
 #  Core module tests
 # ==================================================================================================
+from unittest import mock
+
+import bcrypt
 import httpx
 import pytest
-from unittest import mock
+from pydantic import SecretStr
 
 import config
 import core
@@ -11,11 +14,11 @@ import pubsub as ps
 import utils
 from database import DatabaseInfo, db, Index
 from exceptions import ConsumerServiceNotFoundError
-from tests.helpers import access_database
+from tests.helpers import access_database, Db
 
 class TestCore:
     # ----------------------------------------------------------------------------------------------
-    #   Databases initialization
+    #   Initialization
     # ----------------------------------------------------------------------------------------------
     def test_init_app_databases__general_case(self) -> None:
         test_database_info =  DatabaseInfo(
@@ -96,3 +99,51 @@ class TestCore:
 
         with pytest.raises(ConsumerServiceNotFoundError):
             core.start_consumers(subscriptions=subscriptions)
+
+    def test_create_admin_user__general_case(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        known_salt: bytes,
+        monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        APP_ADM_USER = f'{config.TEST_PREFIX}@adm_user.tst'
+        APP_ADM_PASSWORD = f'{config.TEST_PREFIX}_adm_passwd'
+
+        monkeypatch.setenv(name='APP_ADM_USER', value=APP_ADM_USER)
+        monkeypatch.setenv(name='APP_ADM_PASSWORD', value=APP_ADM_PASSWORD)
+
+        credentials_db = test_db
+        credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
+        info_db = another_test_db
+        info_db.database_name = config.USER_INFO_DB_NAME
+
+        credentials_db.create()
+        info_db.create()
+        credentials_db.add_permissions()
+        info_db.add_permissions()
+
+        # We need a known salt to be certain about the resulting hash
+        monkeypatch.setattr(bcrypt, 'gensalt', lambda: known_salt)
+        known_hash = utils.calc_hash(SecretStr(APP_ADM_PASSWORD))
+
+        assert credentials_db.check_document(document_id=APP_ADM_USER) is False
+        assert info_db.check_document(document_id=APP_ADM_USER) is False
+
+        core.create_admin_user()
+
+        credentials_doc = credentials_db.get_document_by_id(
+            document_id=APP_ADM_USER,
+        )
+        assert credentials_doc is not None
+        assert credentials_doc.get('_id') == APP_ADM_USER
+        assert credentials_doc.get('hash') == known_hash
+
+        info_doc = info_db.get_document_by_id(
+            document_id=APP_ADM_USER,
+        )
+        assert info_doc is not None
+        assert info_doc.get('_id') == APP_ADM_USER
+        assert info_doc.get('name') == 'Application Admin User'
+        assert 'address' not in info_doc
+        assert 'phone_number' not in info_doc

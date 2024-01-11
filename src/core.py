@@ -1,18 +1,21 @@
 # ==================================================================================================
 #  Application core data structures and functions
 # ==================================================================================================
+import os
 from collections.abc import Sequence
 
 import httpx
 import threading as thrd
 from fastapi.security import OAuth2PasswordBearer
+from pydantic import SecretStr
 
 import config
 import pubsub as ps
 import services as srv
+import utils
 from config import logging as log
 from database import DatabaseInfo, db, Index
-from exceptions import ConsumerServiceNotFoundError
+from exceptions import ConsumerServiceNotFoundError, InvalidAppAdminCredentialsError
 
 
 # ==================================================================================================
@@ -58,6 +61,29 @@ def init_app_databases(databases_info: Sequence[DatabaseInfo]) -> None:
         error_msg = f'Invalid database URL: {err}'
         print(error_msg)
         exit(-1)
+
+
+def create_admin_user() -> None:
+    """Create administrative application user."""
+    adm_user = os.getenv('APP_ADM_USER')
+    adm_passwd = os.getenv('APP_ADM_PASSWORD')
+    if not adm_user or not adm_passwd:
+        msg = 'Invalid application administrator credentials'
+        log.error(msg=msg)
+        raise InvalidAppAdminCredentialsError(msg)
+    hash_ = utils.calc_hash(SecretStr(adm_passwd))
+
+    db.upsert_document(
+        database_name=config.USER_CREDENTIALS_DB_NAME,
+        document_id=adm_user,
+        fields={'hash': hash_, 'validated': True}
+    )
+
+    db.upsert_document(
+        database_name=config.USER_INFO_DB_NAME,
+        document_id=adm_user,
+        fields={'name': 'Application Admin User'}
+    )
 
 
 def start_consumer_thread(pub_sub: ps.PubSub, subscription: ps.Subscription) -> None:

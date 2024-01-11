@@ -153,9 +153,11 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
         )
 
         user_already_logged_in_status = sch.ServiceStatus(
-            status='user_already_signed_up',
-            error=True,
-            details=sch.StatusDetails(description='User was already logged in.'),
+            status='user_already_logged_in',
+            error=False,
+            details=sch.StatusDetails(
+                description='User was already logged in and last token is still valid.'
+            ),
         )
 
         successful_logged_in_status = sch.ServiceStatus(
@@ -190,17 +192,19 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
         if not validated:
             return email_not_validated_status
 
-        logged_in = user_is_logged_in(db_user_credentials=db_user_credentials)
-        if logged_in:
-            return user_already_logged_in_status
-
-        payload = {'sub': credentials.id}
-        access_token = utils.create_token(payload=payload)
         db.upsert_document(
             database_name=config.USER_CREDENTIALS_DB_NAME,
             document_id=credentials.id,
             fields={'last_login': datetime.now(tz=UTC).isoformat()}
         )
+
+        payload = {'sub': credentials.id}
+        access_token = utils.create_token(payload=payload)
+
+        logged_in = user_is_logged_in(db_user_credentials=db_user_credentials)
+        if logged_in:
+            user_already_logged_in_status.details.data = {'new_token': access_token}
+            return user_already_logged_in_status
 
         successful_logged_in_status.details.data = {'token': access_token}
         return successful_logged_in_status
