@@ -225,6 +225,7 @@ Results of the PoC will be available on a future document to be referenced here 
 
 **As this is a Proof of Concept, this code is not proper to be used on production environment without further hardening.**
 
+-----------------------------
 MIT License
 
 Copyright (c) 2023-to present Armando Máximo Baratti
@@ -246,3 +247,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+-----------------------------
+
+The recipes come from:
+
+- https://publicdomainrecipes.com/
+- https://publicdomainrecipes.org/
+
+and are said as being of public domain.

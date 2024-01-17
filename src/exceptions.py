@@ -40,3 +40,11 @@ class ProducerNotRegisteredError(Exception):
 class ConsumerServiceNotFoundError(Exception):
     """The consumer service function could not be found."""
     ...
+
+
+# --------------------------------------------------------------------------------------------------
+#   CSV importing
+# --------------------------------------------------------------------------------------------------
+class InvalidCsvFormatError(Exception):
+    """CSV recipe file has incorrect format."""
+    ...

@@ -4,6 +4,7 @@
 import bcrypt
 import config
 import pytest
+import string
 from jose import ExpiredSignatureError, jwt, JWTError
 from pydantic import SecretStr
 
@@ -57,12 +58,12 @@ class TestUtils:
         ) == expected_data
 
     def test_filter_data__keep_none(self, general_data: dict) -> None:
-        expected_data = {}
+        expected_data: dict = {}
 
         assert utils.filter_data(data=general_data, keep=[]) == expected_data
 
     def test_filter_data__empty_data(self) -> None:
-        expected_data = {}
+        expected_data: dict = {}
 
         assert utils.filter_data(data={}, keep=['some_key', 321]) == expected_data
 
@@ -217,7 +218,7 @@ class TestUtils:
     def test_deep_traversal__general_case(self, json_data) -> None:
         assert utils.deep_traversal(json_data, 'field0') == 'value0'
         assert utils.deep_traversal(json_data, 'field1') == 123.45
-        assert utils.deep_traversal(json_data, 'field2') == ['alfa', 'beta', 456]
+        assert utils.deep_traversal(json_data, 'field2') == ['alpha', 'beta', 456]
         assert utils.deep_traversal(json_data, 'field2', 2) == 456
         assert utils.deep_traversal(json_data, 'field3', 'f3_0') == 'value3_0'
         assert utils.deep_traversal(json_data, 'field3', 'f3_1', 0) == {'field3_1_0': 'value3_1_0'}
@@ -266,11 +267,11 @@ class TestUtils:
     #   first() function
     # ----------------------------------------------------------------------------------------------
     def test_first__general_case(self) -> None:
-        assert utils.first(['alfa', 'beta', 'gama']) == 'alfa'
-        assert utils.first(['gama', 'beta', 'alfa']) == 'gama'
-        assert utils.first(['beta', 'gama', 'beta', 'alfa']) == 'beta'
-        assert utils.first([123, 'alfa', 'beta', 'gama']) == 123
-        assert utils.first([None, 'alfa', 'beta', 'gama']) is None
+        assert utils.first(['alpha', 'beta', 'gamma']) == 'alpha'
+        assert utils.first(['gamma', 'beta', 'alpha']) == 'gamma'
+        assert utils.first(['beta', 'gamma', 'beta', 'alpha']) == 'beta'
+        assert utils.first([123, 'alpha', 'beta', 'gamma']) == 123
+        assert utils.first([None, 'alpha', 'beta', 'gamma']) is None
         assert utils.first(['']) == ''
 
     def test_first__non_list(self) -> None:
@@ -286,3 +287,145 @@ class TestUtils:
 
     def test_first__none(self) -> None:
         assert utils.first(None) is None
+
+    # ----------------------------------------------------------------------------------------------
+    #   split_or_empty() function
+    # ----------------------------------------------------------------------------------------------
+    def test_split_or_empty__general_case(self) -> None:
+        assert utils.split_or_empty('alpha#beta#gamma', separator='#') == ['alpha', 'beta', 'gamma']
+
+    def test_split_or_empty__just_one_element(self) -> None:
+        assert utils.split_or_empty('alpha', separator='#') == ['alpha']
+
+    def test_split_or_empty__empty_string(self) -> None:
+        assert utils.split_or_empty('', separator='#') == []
+
+    def test_split_or_empty__just_separator(self) -> None:
+        assert utils.split_or_empty('#', separator='#') == []
+
+    def test_split_or_empty__empty_separator(self) -> None:
+        with pytest.raises(ValueError):
+            utils.split_or_empty('alpha#beta#gamma', separator='')
+
+    def test_split_or_empty__multi_char_separator(self) -> None:
+        assert utils.split_or_empty(
+            'alpha#beta!#gamma', separator='#!@'
+        ) == ['alpha', 'beta!', 'gamma']
+
+
+# spell-checker: disable
+# Too many random characters.
+
+    # ----------------------------------------------------------------------------------------------
+    #   remove_punctuation() function
+    # ----------------------------------------------------------------------------------------------
+    def test_remove_punctuation__general_case(self) -> None:
+        assert utils.remove_punctuation('asd_wqer$%"   09w5!!67*/  123') == 'asdwqer   09w567  123'
+
+    def test_remove_punctuation__maintain_spaces(self) -> None:
+        assert utils.remove_punctuation('_$%"   !!*/  ') == '     '
+        assert utils.remove_punctuation(12 * ' ') == 12 * ' '
+
+    def test_remove_punctuation__without_punctuation(self) -> None:
+        non_punctuation = 'ewwqoirueroi349ur0wqeuj234ng'
+        assert utils.remove_punctuation(non_punctuation) == non_punctuation
+        assert (
+            utils.remove_punctuation(string.ascii_letters + string.digits) ==
+            string.ascii_letters + string.digits
+        )
+
+    def test_remove_punctuation__only_punctuation(self) -> None:
+        assert utils.remove_punctuation('_$%"!!*/') == ''
+        assert utils.remove_punctuation(string.punctuation) == ''
+
+    def test_remove_punctuation__empty_string(self) -> None:
+        assert utils.remove_punctuation('') == ''
+
+
+    # ----------------------------------------------------------------------------------------------
+    #   remove_unicode_and_accents() function
+    # ----------------------------------------------------------------------------------------------
+    def test_remove_unicode_and_accents__general_case(self) -> None:
+        assert (
+            utils.remove_unicode_and_accents('água é ação, AÇÃO É MECÂNICA') ==
+            'agua e acao, ACAO E MECANICA'
+        )
+        assert (
+            utils.remove_unicode_and_accents('água é ação 🙂 AÇÃO É MECÂNICA 🔧') ==
+            'agua e acao  ACAO E MECANICA '
+        )
+
+    def test_remove_unicode_and_accents__maintain_spaces(self) -> None:
+        assert (
+            utils.remove_unicode_and_accents('água  é  ação, AÇÃO     É MECÂNICA') ==
+            'agua  e  acao, ACAO     E MECANICA'
+        )
+        assert (
+            utils.remove_unicode_and_accents('água  é  ação 🙂 AÇÃO      É MECÂNICA 🔧') ==
+            'agua  e  acao  ACAO      E MECANICA '
+        )
+
+    def test_remove_unicode_and_accents__without_accents_or_unicode(self) -> None:
+        without_accents_or_unicode = 'water is action, action is mechanics'
+        assert (
+            utils.remove_unicode_and_accents(without_accents_or_unicode) ==
+            without_accents_or_unicode
+        )
+        assert (
+            utils.remove_unicode_and_accents(string.ascii_letters + string.digits) ==
+            string.ascii_letters + string.digits
+        )
+
+    def test_remove_unicode_and_accents__accentuation_only(self) -> None:
+        only_accents_and_unicode = 'áéçãÇÃÉÂ'
+        assert (utils.remove_unicode_and_accents(only_accents_and_unicode) == 'aecaCAEA')
+
+    def test_remove_unicode_and_accents__unicode_only(self) -> None:
+        only_accents_and_unicode = '🤩🍆🎀🌽🇧🇷🌎️'
+        assert (utils.remove_unicode_and_accents(only_accents_and_unicode) == '')
+
+    def test_remove_unicode_and_accents__empty_string(self) -> None:
+        only_accents_and_unicode = ''
+        assert (utils.remove_unicode_and_accents(only_accents_and_unicode) == '')
+
+    # ----------------------------------------------------------------------------------------------
+    #   slugify() function
+    # ----------------------------------------------------------------------------------------------
+    def test_slugify__general_case(self) -> None:
+        assert (
+            utils.slugify('🤩 T,h!îs       i🌽S\t\n a %%G__õo=D     !t*É"st 32🌎️1  ') ==
+            'this-is-a-good-test-321'
+        )
+
+    def test_slugify__just_accents_and_some_punctuation(self) -> None:
+        assert (
+            utils.slugify(' Thîs       iS\n a Gõo=D     !t*É"st 321  ') ==
+            'this-is-a-good-test-321'
+        )
+
+    def test_slugify__only_invalids(self) -> None:
+        assert utils.slugify('$🎀_-🌽&%*🇧🇷/') == ''
+
+    def test_slugify__invalids_with_space(self) -> None:
+        assert utils.slugify('$🎀_-   🌽&%*\t\n🇧🇷/') == ''
+
+    def test_slugify__only_spaces(self) -> None:
+        assert utils.slugify('   \t  \n\n \t') == ''
+
+    def test_slugify__no_spaces(self) -> None:
+        assert utils.slugify('$t🎀_=Ê🌽&s%*🇧🇷T/') == 'test'
+
+    def test_slugify__just_one_space(self) -> None:
+        assert utils.slugify('$t🎀_=Ê🌽&s%*🇧🇷T /') == 'test'
+        assert utils.slugify('$t🎀_=Ê🌽&s%*🇧🇷T/ ') == 'test'
+        assert utils.slugify(' $t🎀_=Ê🌽&s%*🇧🇷T/') == 'test'
+
+    def test_slugify__empty_string(self) -> None:
+        assert utils.slugify('') == ''
+
+    def test_slugify__separator_on_string(self) -> None:
+        assert utils.slugify(
+            'this string has the-separator inside it'
+        ) == 'this-string-has-the-separator-inside-it'
+
+# spell-checker: enable

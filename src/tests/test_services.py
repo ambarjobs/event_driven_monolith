@@ -1,18 +1,21 @@
 # ==================================================================================================
 #  Services module tests
 # ==================================================================================================
+import io
 import json
 from datetime import datetime, timedelta, UTC
+from typing import Any
 from unittest import mock
 
 import bcrypt
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 import config
 import schemas as sch
 import services as srv
 import utils
+from exceptions import InvalidCsvFormatError
 from tests.helpers import Db
 
 
@@ -657,3 +660,152 @@ class TestServices:
 
         user_credentials_data = user_credentials_db.get_document_by_id(document_id=user_id)
         assert utils.deep_traversal(user_credentials_data, 'validated') is True
+
+    # ==============================================================================================
+    #   parse_recipe_data service
+    # ==============================================================================================
+    def test_parse_recipe_data__general_case(
+        self,
+        recipe_csv_data: dict[str, Any],
+        this_moment: datetime
+    ) -> None:
+        recipe = srv.parse_recipe_data(csv_data=recipe_csv_data)
+
+        assert recipe.summary.name == 'Lemon cake'
+        assert recipe.summary.description == 'A great lemon cake'
+        assert recipe.id == 'lemon-cake'
+        assert recipe.category == 'dessert'
+        assert recipe.easiness == 'medium'
+        assert recipe.tags == ['dessert', 'lemon', 'cake']
+        assert recipe.recipe.ingredients == [
+            'lemon juice',
+            'wheat flour',
+            'milk',
+            'sugar',
+            'butter'
+        ]
+        assert recipe.recipe.directions == (
+            'Mix everything.\nPut it in a greased pan and put it in the oven.'
+        )
+        # `recipe.modif_datetime` generated recently.
+        assert recipe.modif_datetime - this_moment < timedelta(seconds=config.TEST_EXECUTION_LIMIT)
+
+    def test_parse_recipe_data__missing_required_field(self, recipe_csv_data: dict[str, Any]) -> None:
+        del(recipe_csv_data['name'])
+
+        with pytest.raises(InvalidCsvFormatError):
+            srv.parse_recipe_data(csv_data=recipe_csv_data)
+
+    def test_parse_recipe_data__empty_summary_name(self, recipe_csv_data: dict[str, Any]) -> None:
+        recipe_csv_data['name'] = ''
+
+        with pytest.raises(ValidationError):
+            srv.parse_recipe_data(csv_data=recipe_csv_data)
+
+    def test_parse_recipe_data__empty_ingredients(self, recipe_csv_data: dict[str, Any]) -> None:
+        recipe_csv_data['ingredients'] = ''
+
+        with pytest.raises(ValidationError):
+            srv.parse_recipe_data(csv_data=recipe_csv_data)
+
+    def test_parse_recipe_data__empty_directions(self, recipe_csv_data: dict[str, Any]) -> None:
+        recipe_csv_data['directions'] = ''
+
+        with pytest.raises(ValidationError):
+            srv.parse_recipe_data(csv_data=recipe_csv_data)
+
+    def test_parse_recipe_data__unknown_easiness(self, recipe_csv_data: dict[str, Any]) -> None:
+        recipe_csv_data['easiness'] = 'invalid'
+
+        with pytest.raises(ValidationError):
+            srv.parse_recipe_data(csv_data=recipe_csv_data)
+
+    def test_parse_recipe_data__invalid_data(self, recipe_csv_data: dict[str, Any]) -> None:
+        recipe_csv_data['category'] = None
+
+        with pytest.raises(InvalidCsvFormatError):
+            srv.parse_recipe_data(csv_data=recipe_csv_data)
+
+    # ==============================================================================================
+    #   import_csv_recipes service
+    # ==============================================================================================
+    def test_import_csv_recipes__general_case(
+        self,
+        recipe_csv_file: io.BytesIO,
+        this_moment: datetime
+    ) -> None:
+        recipes = srv.import_csv_recipes(csv_file=recipe_csv_file)
+
+        assert len(recipes) == 2
+
+        first_recipe, second_recipe = recipes
+
+        assert first_recipe.summary.name == 'Lemon cake'
+        assert first_recipe.summary.description == 'A great lemon cake'
+        assert first_recipe.id == 'lemon-cake'
+        assert first_recipe.category == 'dessert'
+        assert first_recipe.easiness == 'medium'
+        assert first_recipe.price == 1.23
+        assert first_recipe.tags == ['dessert', 'lemon', 'cake']
+        assert first_recipe.recipe.ingredients == [
+            'lemon juice',
+            'wheat flour',
+            'milk',
+            'sugar',
+            'butter'
+        ]
+        assert (
+            first_recipe.modif_datetime - this_moment <
+            timedelta(seconds=config.TEST_EXECUTION_LIMIT)
+        )
+
+        assert second_recipe.summary.name == 'Baked potatoes'
+        assert second_recipe.summary.description == 'Hot and tasty baked potatoes.'
+        assert second_recipe.id == 'baked-potatoes'
+        assert second_recipe.category == ''
+        assert second_recipe.easiness == 'easy'
+        assert second_recipe.price == 1.2
+        assert second_recipe.tags == []
+        assert second_recipe.recipe.ingredients == [
+            'potatoes',
+            'milk',
+            'butter',
+            'spices',
+        ]
+        assert (
+            second_recipe.modif_datetime - this_moment <
+            timedelta(seconds=config.TEST_EXECUTION_LIMIT)
+        )
+
+    def test_import_csv_recipes__empty_file(self) -> None:
+        recipe_csv_file = io.BytesIO(initial_bytes=b'')
+        recipes = srv.import_csv_recipes(csv_file=recipe_csv_file)
+
+        assert recipes == []
+
+    def test_import_csv_recipes__invalid_file(self) -> None:
+        recipe_csv_file = io.BytesIO(initial_bytes=b'Some\tinvalid\tCSV\tfile')
+
+        with pytest.raises(InvalidCsvFormatError):
+            srv.import_csv_recipes(csv_file=recipe_csv_file)
+
+    def test_import_csv_recipes__invalid_delimiter(self) -> None:
+        recipe_csv_file = io.BytesIO(initial_bytes=b'Some,invalid,CSV,delimiter')
+
+        with pytest.raises(InvalidCsvFormatError):
+            srv.import_csv_recipes(csv_file=recipe_csv_file)
+
+    # ==============================================================================================
+    #   store_recipe service
+    # ==============================================================================================
+    def test_store_recipe__general_case(self, recipe) -> None:
+        with mock.patch(target='database.CouchDb.upsert_document') as mock_upsert:
+            srv.store_recipe(recipe)
+            fields = recipe.model_dump()
+            recipe_id = fields.pop('id')
+            fields['modif_datetime'] = fields['modif_datetime'].isoformat()
+            mock_upsert.assert_called_with(
+                database_name=config.RECIPES_DB_NAME,
+                document_id=recipe_id,
+                fields=fields
+            )

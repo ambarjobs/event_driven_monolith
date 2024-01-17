@@ -3,16 +3,15 @@
 # ==================================================================================================
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import ExpiredSignatureError, JWTError
 from pydantic import SecretStr, ValidationError
 
+import config
 import core
 import schemas as sch
 import services as srv
-import utils
 from config import logging as log
 from core import oauth2_scheme
 
@@ -214,49 +213,48 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
     """
     return HTMLResponse(content=content)
 
+# ==================================================================================================
+#  Recipes
+# ==================================================================================================
+@app.post('/load-recipes')
+def load_recipes(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    recipes_csv: UploadFile
+) -> JSONResponse:
+    """Load a .csv file with recipes content to the `recipe` database."""
+    token_status = srv.handle_token(token=token)
+    if token_status.status in ('invalid_token', 'expired_token'):
+        return JSONResponse(
+            content=token_status.model_dump(),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    token_user = token_status.details.data.get('sub')
+    if not token_user or token_user != config.APP_ADM_USER:
+        token_status.status = 'invalid_user'
+        token_status.details.description = 'Only application admin can load recipes.'
+        token_status.error = True
+        return JSONResponse(
+            content=token_status.model_dump(),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    recipes = srv.import_csv_recipes(csv_file=recipes_csv.file)
+    for recipe in recipes:
+        srv.store_recipe(recipe)
+
+    token_status.status = 'recipes_loaded'
+    token_status.details.description = 'Recipes loaded with success.'
+    return JSONResponse(content=token_status.model_dump(), status_code=status.HTTP_201_CREATED)
 
 @app.get('/tst')
-def test(token: Annotated[str, Depends(oauth2_scheme)]):
+def test(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONResponse:
     """Example endpoint using JWT OAuth2 authentication."""
-    # ------------------------------------------------------------------------------------------
-    #   Output status
-    # ------------------------------------------------------------------------------------------
-    ok_status = sch.ServiceStatus(
-        status='ok',
-        error=False,
-        details=sch.StatusDetails(
-            description='Test was well.'
-        ),
-    )
-
-    invalid_token_status = sch.ServiceStatus(
-        status='invalid_token',
-        error=True,
-        details=sch.StatusDetails(
-            description='Invalid token.'
-        ),
-    )
-
-    expired_token_status = sch.ServiceStatus(
-        status='expired_token',
-        error=True,
-        details=sch.StatusDetails(
-            description='The token has expired.'
-        ),
-    )
-    # ------------------------------------------------------------------------------------------
-    try:
-        payload = utils.get_token_payload(token=token)
-        content_data = ok_status
-        content_data.details.data = payload
-        status_code = status.HTTP_200_OK
-    except (JWTError, ExpiredSignatureError) as err:
-        status_code = status.HTTP_400_BAD_REQUEST
-        match err:
-            case JWTError():
-                content_data = invalid_token_status
-                content_data.details.description = f'Invalid token: {err}'
-            case ExpiredSignatureError():
-                content_data = expired_token_status
-                content_data.details.description = f'The token has expired, log in again: {err}'
-    return JSONResponse(content=content_data.model_dump(), status_code=status_code)
+    token_status = srv.handle_token(token=token)
+    if token_status.status in ('invalid_token', 'expired_token'):
+        return JSONResponse(
+            content=token_status.model_dump(),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    token_status.status = 'ok'
+    token_status.details.description = 'Test was well.'
+    return JSONResponse(content=token_status.model_dump(), status_code=status.HTTP_201_CREATED)

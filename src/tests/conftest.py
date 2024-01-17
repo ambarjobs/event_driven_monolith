@@ -1,7 +1,9 @@
 # ==================================================================================================
 #  Tests fixtures
 # ==================================================================================================
+import io
 from datetime import datetime, UTC
+from typing import Any
 
 import pytest
 from pika.adapters.blocking_connection import BlockingChannel
@@ -63,7 +65,7 @@ def json_data() -> dict:
     return {
         'field0': 'value0',
         'field1': 123.45,
-        'field2': ['alfa', 'beta', 456],
+        'field2': ['alpha', 'beta', 456],
         'field3': {
             'f3_0': 'value3_0',
             'f3_1': [
@@ -181,15 +183,6 @@ def callback_null_params() -> dict[str, None]:
     return {'channel': None, 'method': None, 'properties': None}
 
 
-# @pytest.fixture
-# def callback_parameters() -> dict[str, Any]:
-#     """Mocked callback function parameters"""
-#     pub_sub = ps.PubSub()
-#     mock_method = pub_sub.channel.basic_consume().method
-#     yield {'channel': pub_sub.channel, 'method': mock_method, 'properties': None}
-#     pub_sub.connection.close()
-
-
 # --------------------------------------------------------------------------------------------------
 #   Services
 # --------------------------------------------------------------------------------------------------
@@ -209,4 +202,72 @@ def email_confirmation_info(
     user_name: str,
     base_url: str
 ) -> sch.EmailConfirmationInfo:
+    """Return an `EmailConfirmationInfo` structure."""
     return sch.EmailConfirmationInfo(user_id=user_id, user_name=user_name, base_url=base_url)
+
+
+# --------------------------------------------------------------------------------------------------
+#   Recipes
+# --------------------------------------------------------------------------------------------------
+@pytest.fixture
+def recipe_csv_data() -> dict[str, Any]:
+    """Return recipe data as read from a .csv file."""
+
+    # Great culinary skills involved 🙂
+    return {
+        'name': 'Lemon cake',
+        'description': 'A great lemon cake',
+        'category': 'dessert',
+        'easiness': 'medium',
+        'price': '1.23',
+        'tags': 'dessert|lemon|cake',
+        'ingredients': 'lemon juice|wheat flour|milk|sugar|butter',
+        'directions': 'Mix everything.|Put it in a greased pan and put it in the oven.'
+    }
+
+@pytest.fixture
+def recipe_csv_file(recipe_csv_data: dict[str, Any]) -> io.BytesIO:
+    """Return a CSV file like."""
+    first_record_content = config.CSV_FIELD_SEPARATOR.join(recipe_csv_data.values())
+
+    second_record = {
+        'name': 'Baked potatoes',
+        'description': 'Hot and tasty baked potatoes.',
+        'category': '',
+        'easiness': 'easy',
+        'price': '1.20',
+        'tags': '',
+        'ingredients': 'potatoes|milk|butter|spices',
+        'directions': 'Open the potatoes in halves.|Spread butter in each half.|Put on the owen.'
+    }
+    second_record_content = config.CSV_FIELD_SEPARATOR.join(second_record.values())
+
+    return io.BytesIO(
+        initial_bytes=b'\n'.join(
+            (
+                first_record_content.encode(config.APP_ENCODING_FORMAT),
+                second_record_content.encode(config.APP_ENCODING_FORMAT)
+            )
+        )
+    )
+
+@pytest.fixture
+def recipe(recipe_csv_data: dict[str, Any]) -> sch.Recipe:
+    """Return a Recipe."""
+    summary = sch.RecipeSummary(
+        name=recipe_csv_data['name'],
+        description=recipe_csv_data['description']
+    )
+
+    tags = recipe_csv_data['tags'].split('|')
+
+    ingredients = recipe_csv_data['ingredients'].split('|')
+    directions = recipe_csv_data['directions'].replace('|', '\n')
+    recipe_info = sch.RecipeInformation(ingredients=ingredients, directions=directions)
+
+    direct_fields = {
+        key: value for key, value in recipe_csv_data.items()
+        if key in ('category', 'easiness', 'price')
+    }
+
+    return sch.Recipe(summary=summary, **direct_fields, tags=tags, recipe=recipe_info)

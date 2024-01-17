@@ -42,7 +42,10 @@ APP_DATABASES_INFO = [
                 fields=['_id', 'email_confirmation_token']
             )
         ]
-    )
+    ),
+    DatabaseInfo(
+        name=config.RECIPES_DB_NAME,
+        indexes=[Index(name=f'{config.RECIPES_DB_NAME}-id--index', fields=['_id'])]),
 ]
 
 # ==================================================================================================

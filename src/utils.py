@@ -1,6 +1,8 @@
 # ==================================================================================================
 #  Application utility functions
 # ==================================================================================================
+import string
+import unicodedata
 from copy import deepcopy
 from collections.abc import Generator, Mapping, Sequence
 from datetime import datetime, timedelta, UTC
@@ -22,7 +24,7 @@ def clear_nulls(data: dict) -> dict:
     """Return data removing fields with value `None`."""
     return {key: value for key, value in data.items() if value is not None}
 
-def filter_data(data: dict, keep: Sequence[str]) -> dict:
+def filter_data(data: dict, keep: Sequence[Any]) -> dict:
     """Return data filtering keys not in `keep`."""
     return {key: value for key, value in data.items() if key in keep}
 
@@ -112,3 +114,30 @@ def first(seq: Sequence | Generator | Mapping | None) -> Any | None:
     """Return the first element of a sequence or `None` for empty sequences"""
     first, *_ = seq if seq else [None]
     return first
+
+
+def split_or_empty(string: str, separator: str) -> list:
+    """Split a string using a separator or return an empty list."""
+    if not separator:
+        raise ValueError
+    normalized_separator = separator[0]
+    if string in ('', normalized_separator):
+        return []
+    return string.split(normalized_separator)
+
+# --------------------------------------------------------------------------------------------------
+#   String manipulation
+# --------------------------------------------------------------------------------------------------
+def remove_punctuation(text: str) -> str:
+    """Remove punctuation from text."""
+    translate_tbl = str.maketrans('', '', string.punctuation)
+    return text.translate(translate_tbl)
+
+def remove_unicode_and_accents(text: str) -> str:
+    """Remove unicode characters and accents from text."""
+    return unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode()
+
+def slugify(text: str, separator: str = '-') -> str:
+    """Transform the text into a slug, removing unicode, accents and special characters."""
+    normalized_text = remove_punctuation(remove_unicode_and_accents(text.replace('-', ' '))).lower()
+    return separator.join(normalized_text.split())

@@ -1,11 +1,14 @@
 # ==================================================================================================
 #  Application services
 # ==================================================================================================
+import csv
+import io
 from datetime import datetime, timedelta, UTC
 from typing import Any
 
 import httpx
 from fastapi import status
+from jose import ExpiredSignatureError, JWTError
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from pydantic import ValidationError
@@ -15,7 +18,7 @@ import pubsub as ps
 import schemas as sch
 import utils
 from database import db
-from jose import ExpiredSignatureError, JWTError
+from exceptions import InvalidCsvFormatError
 
 
 CONSUMERS_SUBSCRIPTIONS = (
@@ -54,6 +57,50 @@ def user_is_logged_in(db_user_credentials: dict[str, Any]) -> bool:
         this_moment - datetime.fromisoformat(last_login) <
         timedelta(hours=config.TOKEN_DEFAULT_EXPIRATION_HOURS)
     )
+
+def handle_token(token: str) -> sch.ServiceStatus:
+    # ------------------------------------------------------------------------------------------
+    #   Output status
+    # ------------------------------------------------------------------------------------------
+    ok_status = sch.ServiceStatus(
+        status='OK',
+        error=False,
+        details=sch.StatusDetails(
+            description='OK.'
+        ),
+    )
+
+    invalid_token_status = sch.ServiceStatus(
+        status='invalid_token',
+        error=True,
+        details=sch.StatusDetails(
+            description='Invalid token.'
+        ),
+    )
+
+    expired_token_status = sch.ServiceStatus(
+        status='expired_token',
+        error=True,
+        details=sch.StatusDetails(
+            description='The token has expired.'
+        ),
+    )
+    # ------------------------------------------------------------------------------------------
+    try:
+        payload = utils.get_token_payload(token=token)
+        content_data = ok_status
+        content_data.details.data = payload
+    except (JWTError, ExpiredSignatureError) as err:
+        match err:
+            case JWTError():
+                content_data = invalid_token_status
+                content_data.details.description = f'Invalid token: {err}'
+                content_data.details.data = {}
+            case ExpiredSignatureError():
+                content_data = expired_token_status
+                content_data.details.description = f'The token has expired, log in again: {err}'
+                content_data.details.data = {}
+    return content_data
 
 
 # ==================================================================================================
@@ -380,3 +427,91 @@ def enable_user(
     if channel:
         # Acknowledging the message.
         channel.basic_ack(delivery_tag=method.delivery_tag)
+
+# --------------------------------------------------------------------------------------------------
+#   Recipes
+# --------------------------------------------------------------------------------------------------
+def parse_recipe_data(csv_data: dict[str, Any]) -> sch.Recipe:
+    """Parse a record of recipe read from .csv into a `Recipe` schema.
+
+    recipe_data: {
+        'name':         str                                     =>  'summary.name'
+        'description':  str                                     =>  'summary.description'
+        'category':     str                                     =>  'category'
+        'easiness':     str ('easy', 'medium', 'hard')          =>  'easiness'
+        'price':        float                                   =>  'price'
+        'tags':         list[str] (items separated by '|')      =>  'tags'
+        'ingredients':  list[str] (items separated by '|')      =>  'recipe.ingredients'
+        'directions':   str (lines separated by '|')            =>  'recipe.directions'
+                        slugify(name)                           =>  'id'
+                        datetime.now()                          =>  'modif_time'
+    }
+    """
+    required_fields = [
+        'name',
+        'description',
+        'category',
+        'easiness',
+        'price',
+        'tags',
+        'ingredients',
+        'directions'
+    ]
+
+    if None in csv_data.values() or set(csv_data.keys()) < set(required_fields):
+        raise InvalidCsvFormatError
+
+    description = '\n'.join(
+        utils.split_or_empty(csv_data['description'], separator=config.CSV_LIST_SEPARATOR)
+    )
+    summary = sch.RecipeSummary(name=csv_data['name'], description=description)
+
+    recipe_direct_data = {
+        key: value for key, value in csv_data.items() if key in ('category', 'easiness', 'price')
+    }
+
+    tags = utils.split_or_empty(csv_data['tags'], separator=config.CSV_LIST_SEPARATOR)
+    ingredients = utils.split_or_empty(csv_data['ingredients'], separator=config.CSV_LIST_SEPARATOR)
+    directions = '\n'.join(
+        utils.split_or_empty(csv_data['directions'], separator=config.CSV_LIST_SEPARATOR)
+    )
+
+    recipe_info = sch.RecipeInformation(ingredients=ingredients, directions=directions)
+    return sch.Recipe(
+        summary=summary,
+        **recipe_direct_data,
+        tags=tags,
+        recipe=recipe_info,
+    )
+
+def import_csv_recipes(csv_file: io.BytesIO) -> list[sch.Recipe]:
+    """Read a .csv file and return a list of schema objects representing the recipes."""
+    csv_text_file = io.TextIOWrapper(csv_file, encoding=config.APP_ENCODING_FORMAT)
+    recipe_reader = csv.DictReader(
+        csv_text_file,
+        fieldnames=[
+            'name',
+            'description',
+            'category',
+            'easiness',
+            'price',
+            'tags',
+            'ingredients',
+            'directions'
+        ],
+        delimiter=config.CSV_FIELD_SEPARATOR,
+    )
+    recipes_data = [parse_recipe_data(recipe) for recipe in recipe_reader]
+    return recipes_data
+
+def store_recipe(recipe: sch.Recipe) -> None:
+    """Stores the recipe on database."""
+    db_recipe = recipe.model_dump()
+    db_recipe['easiness'] = recipe.easiness.value
+    db_recipe['modif_datetime'] = recipe.modif_datetime.isoformat()
+    recipe_id = db_recipe.pop('id')
+    db.upsert_document(
+        database_name=config.RECIPES_DB_NAME,
+        document_id=recipe_id,
+        fields=db_recipe
+    )
