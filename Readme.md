@@ -41,6 +41,7 @@ So thinking in trying to join the best of both worlds, I've created this project
 Below is a system diagram of the PoC:
 
 ![Event-Driven Monolith Diagram](docs/event_driven_monolith.png)
+(click to enlarge)
 
 On the upper left side there is a legend showing the diagram's main components types.
 
@@ -81,6 +82,7 @@ Below there are the main parts of the project with indication of what has been i
     [x] Sign in
     [x] Login
     [x] Email confirmation
+    [x] Recipes importing
     [ ] Basic platform operation
     [ ] Basic purchase mechanism
     [ ] Payment provider simulator
@@ -223,7 +225,8 @@ Results of the PoC will be available on a future document to be referenced here 
 
 ## License
 
-**As this is a Proof of Concept, this code is not proper to be used on production environment without further hardening.**
+> [!CAUTION]
+> As this is a Proof of Concept, this code is not proper to be used on production environment without further hardening.
 
 -----------------------------
 MIT License
