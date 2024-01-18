@@ -66,7 +66,8 @@ def handle_token(token: str) -> sch.ServiceStatus:
         status='OK',
         error=False,
         details=sch.StatusDetails(
-            description='OK.'
+            description='OK.',
+            data={}
         ),
     )
 
@@ -74,7 +75,8 @@ def handle_token(token: str) -> sch.ServiceStatus:
         status='invalid_token',
         error=True,
         details=sch.StatusDetails(
-            description='Invalid token.'
+            description='Invalid token.',
+            data={}
         ),
     )
 
@@ -82,7 +84,8 @@ def handle_token(token: str) -> sch.ServiceStatus:
         status='expired_token',
         error=True,
         details=sch.StatusDetails(
-            description='The token has expired.'
+            description='The token has expired.',
+            data={}
         ),
     )
     # ------------------------------------------------------------------------------------------
@@ -90,16 +93,14 @@ def handle_token(token: str) -> sch.ServiceStatus:
         payload = utils.get_token_payload(token=token)
         content_data = ok_status
         content_data.details.data = payload
-    except (JWTError, ExpiredSignatureError) as err:
+    except (ExpiredSignatureError, JWTError) as err:
         match err:
-            case JWTError():
-                content_data = invalid_token_status
-                content_data.details.description = f'Invalid token: {err}'
-                content_data.details.data = {}
             case ExpiredSignatureError():
                 content_data = expired_token_status
                 content_data.details.description = f'The token has expired, log in again: {err}'
-                content_data.details.data = {}
+            case JWTError():
+                content_data = invalid_token_status
+                content_data.details.description = f'Invalid token: {err}'
     return content_data
 
 

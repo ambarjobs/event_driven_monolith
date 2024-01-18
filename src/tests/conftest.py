@@ -11,8 +11,9 @@ from pika.spec import Basic, BasicProperties
 from pydantic import SecretStr
 
 import config
-import schemas as sch
 import pubsub as ps
+import schemas as sch
+import utils
 from tests.helpers import Db
 
 
@@ -145,6 +146,15 @@ def user_credentials(password) -> sch.UserCredentials:
     )
 
 
+@pytest.fixture
+def admin_credentials(password) -> sch.UserCredentials:
+    """Test admin user credentials."""
+    return sch.UserCredentials(
+        id=config.APP_ADM_USER,
+        password=password
+    )
+
+
 # --------------------------------------------------------------------------------------------------
 #   Pubsub
 # --------------------------------------------------------------------------------------------------
@@ -225,12 +235,11 @@ def recipe_csv_data() -> dict[str, Any]:
         'directions': 'Mix everything.|Put it in a greased pan and put it in the oven.'
     }
 
-@pytest.fixture
-def recipe_csv_file(recipe_csv_data: dict[str, Any]) -> io.BytesIO:
-    """Return a CSV file like."""
-    first_record_content = config.CSV_FIELD_SEPARATOR.join(recipe_csv_data.values())
 
-    second_record = {
+@pytest.fixture
+def another_recipe_csv_data() -> dict[str, Any]:
+    """Return recipe data as read from a .csv file."""
+    return {
         'name': 'Baked potatoes',
         'description': 'Hot and tasty baked potatoes.',
         'category': '',
@@ -240,7 +249,16 @@ def recipe_csv_file(recipe_csv_data: dict[str, Any]) -> io.BytesIO:
         'ingredients': 'potatoes|milk|butter|spices',
         'directions': 'Open the potatoes in halves.|Spread butter in each half.|Put on the owen.'
     }
-    second_record_content = config.CSV_FIELD_SEPARATOR.join(second_record.values())
+
+
+@pytest.fixture
+def recipe_csv_file(
+    recipe_csv_data: dict[str, Any],
+    another_recipe_csv_data: dict[str, Any]
+) -> io.BytesIO:
+    """Return a CSV file like."""
+    first_record_content = config.CSV_FIELD_SEPARATOR.join(recipe_csv_data.values())
+    second_record_content = config.CSV_FIELD_SEPARATOR.join(another_recipe_csv_data.values())
 
     return io.BytesIO(
         initial_bytes=b'\n'.join(
@@ -251,6 +269,7 @@ def recipe_csv_file(recipe_csv_data: dict[str, Any]) -> io.BytesIO:
         )
     )
 
+
 @pytest.fixture
 def recipe(recipe_csv_data: dict[str, Any]) -> sch.Recipe:
     """Return a Recipe."""
@@ -259,7 +278,7 @@ def recipe(recipe_csv_data: dict[str, Any]) -> sch.Recipe:
         description=recipe_csv_data['description']
     )
 
-    tags = recipe_csv_data['tags'].split('|')
+    tags = utils.split_or_empty(recipe_csv_data['tags'], separator='|')
 
     ingredients = recipe_csv_data['ingredients'].split('|')
     directions = recipe_csv_data['directions'].replace('|', '\n')
@@ -267,6 +286,28 @@ def recipe(recipe_csv_data: dict[str, Any]) -> sch.Recipe:
 
     direct_fields = {
         key: value for key, value in recipe_csv_data.items()
+        if key in ('category', 'easiness', 'price')
+    }
+
+    return sch.Recipe(summary=summary, **direct_fields, tags=tags, recipe=recipe_info)
+
+
+@pytest.fixture
+def another_recipe(another_recipe_csv_data: dict[str, Any]) -> sch.Recipe:
+    """Return a Recipe."""
+    summary = sch.RecipeSummary(
+        name=another_recipe_csv_data['name'],
+        description=another_recipe_csv_data['description']
+    )
+
+    tags = utils.split_or_empty(another_recipe_csv_data['tags'], separator='|')
+
+    ingredients = another_recipe_csv_data['ingredients'].split('|')
+    directions = another_recipe_csv_data['directions'].replace('|', '\n')
+    recipe_info = sch.RecipeInformation(ingredients=ingredients, directions=directions)
+
+    direct_fields = {
+        key: value for key, value in another_recipe_csv_data.items()
         if key in ('category', 'easiness', 'price')
     }
 

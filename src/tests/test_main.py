@@ -1,6 +1,7 @@
 # ==================================================================================================
 #  Main module tests
 # ==================================================================================================
+import io
 from datetime import datetime, timedelta, UTC
 from unittest import mock
 
@@ -757,3 +758,128 @@ class TestMain:
         )
         for message_part in message_parts:
             assert message_part in content
+
+    # ==============================================================================================
+    #   /load-recipes endpoint test
+    # ==============================================================================================
+    def test_load_recipe__general_case(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        admin_credentials: sch.UserCredentials,
+        recipe_csv_file: io.BytesIO,
+        another_recipe: sch.Recipe,
+    ) -> None:
+        credentials_db = test_db
+        credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
+
+        recipes_db = another_test_db
+        recipes_db.database_name = config.RECIPES_DB_NAME
+
+        credentials_db.create()
+        credentials_db.add_permissions()
+
+        recipes_db.create()
+        recipes_db.add_permissions()
+
+        sign_up_hash = utils.calc_hash(password=admin_credentials.password)
+        sign_up_body = {
+            'hash': sign_up_hash,
+            'validated': True
+        }
+        # Minimal sign up.
+        credentials_db.create_document(document_id=admin_credentials.id, body=sign_up_body)
+
+        payload = {'sub': admin_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        with mock.patch(target='services.store_recipe') as mock_store_recipe:
+            response = client.post(
+                url='/load-recipes',
+                files={'recipes_csv': recipe_csv_file},
+                headers={'Authorization': f'Bearer {token}'}
+            )
+            mock_store_recipe.assert_called_with(another_recipe)
+        assert response.status_code == status.HTTP_201_CREATED
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'recipes_loaded'
+        assert utils.deep_traversal(response_data, 'error') is False
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'Recipes loaded with success.'
+
+    def test_load_recipe__invalid_token(
+        self,
+        admin_credentials: sch.UserCredentials,
+        recipe_csv_file: io.BytesIO,
+    ) -> None:
+        payload = {'sub': admin_credentials.id}
+        token = utils.create_token(payload=payload)
+        invalid_token = token[:-1]
+
+        response = client.post(
+            url='/load-recipes',
+            files={'recipes_csv': recipe_csv_file},
+            headers={'Authorization': f'Bearer {invalid_token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'invalid_token'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'Invalid token: Signature verification failed.'
+
+    def test_load_recipe__expired_token(
+        self,
+        admin_credentials: sch.UserCredentials,
+        recipe_csv_file: io.BytesIO,
+    ) -> None:
+        payload = {'sub': admin_credentials.id}
+        token = utils.create_token(payload=payload, expiration_hours=-1.0)
+
+        response = client.post(
+            url='/load-recipes',
+            files={'recipes_csv': recipe_csv_file},
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'expired_token'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'The token has expired, log in again: Signature has expired.'
+
+    def test_load_recipe__invalid_user(
+        self,
+        user_credentials: sch.UserCredentials,
+        recipe_csv_file: io.BytesIO,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        response = client.post(
+            url='/load-recipes',
+            files={'recipes_csv': recipe_csv_file},
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'invalid_user'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'Only application admin can load recipes.'

@@ -246,6 +246,7 @@ def load_recipes(
     token_status.details.description = 'Recipes loaded with success.'
     return JSONResponse(content=token_status.model_dump(), status_code=status.HTTP_201_CREATED)
 
+# ==================================================================================================
 @app.get('/tst')
 def test(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONResponse:
     """Example endpoint using JWT OAuth2 authentication."""
