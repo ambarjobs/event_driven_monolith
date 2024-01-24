@@ -11,6 +11,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 
 import config
+import services as srv
 import schemas as sch
 import utils
 from main import app
@@ -228,7 +229,7 @@ class TestMain:
             'Invalid user or password. Check if user has signed up.'
         )
         # No token sent (`token` would come inside `data`).
-        assert login_status.details.data is None
+        assert login_status.details.data == {}
 
     def test_login__incorrect_password(
         self,
@@ -265,7 +266,7 @@ class TestMain:
             'Invalid user or password. Check if user has signed up.'
         )
         # No token sent (`token` would come inside `data`).
-        assert login_status.details.data is None
+        assert login_status.details.data == {}
 
     def test_login__user_has_no_hash(
         self,
@@ -298,7 +299,7 @@ class TestMain:
             'Invalid user or password. Check if user has signed up.'
         )
         # No token sent (`token` would come inside `data`).
-        assert login_status.details.data is None
+        assert login_status.details.data == {}
 
     def test_login__no_email_validation(
         self,
@@ -334,7 +335,7 @@ class TestMain:
             'User email is not validated.'
         )
         # No token sent (`token` would come inside `data`).
-        assert login_status.details.data is None
+        assert login_status.details.data == {}
 
     def test_login__user_already_logged_in__last_login_not_expired(
         self,
@@ -883,3 +884,111 @@ class TestMain:
             'details',
             'description'
         ) == 'Only application admin can load recipes.'
+
+    # ==============================================================================================
+    #   /get-all-recipes endpoint test
+    # ==============================================================================================
+    def test_get_all_recipes_endpoint__general_case(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        recipes_db = test_db
+        recipes_db.database_name = config.RECIPES_DB_NAME
+
+        user_recipes_db = another_test_db
+        user_recipes_db.database_name = config.USER_RECIPES_DB_NAME
+
+        recipes_db.create()
+        recipes_db.add_permissions()
+
+        user_recipes_db.create()
+        user_recipes_db.add_permissions()
+
+        all_recipes = (recipe, another_recipe, one_more_recipe)
+        for recipe in all_recipes:
+            srv.store_recipe(recipe=recipe)
+
+        another_recipe.status = sch.RecipeStatus.purchased
+        one_more_recipe.status = sch.RecipeStatus.requested
+
+        user_recipes = (another_recipe, one_more_recipe)
+        for recipe in user_recipes:
+            del(recipe.price)
+            del(recipe.recipe)
+        user_recipes_data = {
+            'recipes': [
+                {'recipe_id': recipe.id, 'status': recipe.status}
+                for recipe in user_recipes
+            ]
+        }
+        user_recipes_db.create_document(document_id=user_credentials.id, body=user_recipes_data)
+
+
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        response = client.get(
+            url='/get-all-recipes',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+        response_data = response.json()
+        api_user_recipes = utils.deep_traversal(response_data, 'recipes')
+        api_recipes_mapping = {recipe['id']: recipe for recipe in api_user_recipes}
+
+        assert len(api_user_recipes) == len(all_recipes)
+        for recipe_data in [recipe.to_json() for recipe in user_recipes]:
+            assert recipe_data in api_user_recipes
+        assert api_recipes_mapping[recipe.id] == recipe.to_json()
+
+    def test_get_all_recipes_endpoint__invalid_token(
+        self,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+        invalid_token = token[:-1]
+
+        response = client.get(
+            url='/get-all-recipes',
+            headers={'Authorization': f'Bearer {invalid_token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'invalid_token'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'Invalid token: Signature verification failed.'
+
+    def test_get_all_recipes_endpoint__expired_token(
+        self,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload, expiration_hours=-1.0)
+
+        response = client.get(
+            url='/get-all-recipes',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'expired_token'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'The token has expired, log in again: Signature has expired.'

@@ -155,6 +155,18 @@ def admin_credentials(password) -> sch.UserCredentials:
     )
 
 
+@pytest.fixture(autouse=True)
+def clean_databases() -> None:
+    yield None
+    for database_name in (
+        config.USER_CREDENTIALS_DB_NAME,
+        config.USER_INFO_DB_NAME,
+        config.EMAIL_CONFIRMATION_DB_NAME,
+        config.RECIPES_DB_NAME,
+        config.USER_RECIPES_DB_NAME
+    ):
+        Db(database_name=database_name).delete()
+
 # --------------------------------------------------------------------------------------------------
 #   Pubsub
 # --------------------------------------------------------------------------------------------------
@@ -238,7 +250,9 @@ def recipe_csv_data() -> dict[str, Any]:
 
 @pytest.fixture
 def another_recipe_csv_data() -> dict[str, Any]:
-    """Return recipe data as read from a .csv file."""
+    """Return another recipe data as read from a .csv file."""
+
+    # Great culinary skills involved 🙂
     return {
         'name': 'Baked potatoes',
         'description': 'Hot and tasty baked potatoes.',
@@ -248,6 +262,26 @@ def another_recipe_csv_data() -> dict[str, Any]:
         'tags': '',
         'ingredients': 'potatoes|milk|butter|spices',
         'directions': 'Open the potatoes in halves.|Spread butter in each half.|Put on the owen.'
+    }
+
+
+@pytest.fixture
+def one_more_recipe_csv_data() -> dict[str, Any]:
+    """Return one more recipe data as read from a .csv file."""
+
+    # Great culinary skills involved 🙂
+    return {
+        'name': 'Popcorn',
+        'description': "Who doesn't like popcorn?",
+        'category': '',
+        'easiness': 'easy',
+        'price': '1.20',
+        'tags': '',
+        'ingredients': 'popcorn|oil|salt',
+        'directions': (
+            'Put 3 spoons of popcorn on a pan.|Join 2 spoons of oil and mix.|'
+            'Put on the fire and wait it to pop.'
+        )
     }
 
 
@@ -270,9 +304,8 @@ def recipe_csv_file(
     )
 
 
-@pytest.fixture
-def recipe(recipe_csv_data: dict[str, Any]) -> sch.Recipe:
-    """Return a Recipe."""
+def csv_data_to_recipe(recipe_csv_data: dict[str, Any]) -> sch.Recipe:
+    """Convert .csv data to a `Recipe`."""
     summary = sch.RecipeSummary(
         name=recipe_csv_data['name'],
         description=recipe_csv_data['description']
@@ -289,26 +322,28 @@ def recipe(recipe_csv_data: dict[str, Any]) -> sch.Recipe:
         if key in ('category', 'easiness', 'price')
     }
 
-    return sch.Recipe(summary=summary, **direct_fields, tags=tags, recipe=recipe_info)
+    return sch.Recipe(
+        summary=summary,
+        **direct_fields,
+        tags=tags,
+        recipe=recipe_info,
+        status='available'
+    )
+
+
+@pytest.fixture
+def recipe(recipe_csv_data: dict[str, Any]) -> sch.Recipe:
+    """Return a Recipe."""
+    return csv_data_to_recipe(recipe_csv_data=recipe_csv_data)
 
 
 @pytest.fixture
 def another_recipe(another_recipe_csv_data: dict[str, Any]) -> sch.Recipe:
-    """Return a Recipe."""
-    summary = sch.RecipeSummary(
-        name=another_recipe_csv_data['name'],
-        description=another_recipe_csv_data['description']
-    )
+    """Return another Recipe."""
+    return csv_data_to_recipe(recipe_csv_data=another_recipe_csv_data)
 
-    tags = utils.split_or_empty(another_recipe_csv_data['tags'], separator='|')
 
-    ingredients = another_recipe_csv_data['ingredients'].split('|')
-    directions = another_recipe_csv_data['directions'].replace('|', '\n')
-    recipe_info = sch.RecipeInformation(ingredients=ingredients, directions=directions)
-
-    direct_fields = {
-        key: value for key, value in another_recipe_csv_data.items()
-        if key in ('category', 'easiness', 'price')
-    }
-
-    return sch.Recipe(summary=summary, **direct_fields, tags=tags, recipe=recipe_info)
+@pytest.fixture
+def one_more_recipe(one_more_recipe_csv_data: dict[str, Any]) -> sch.Recipe:
+    """Return one more Recipe."""
+    return csv_data_to_recipe(recipe_csv_data=one_more_recipe_csv_data)

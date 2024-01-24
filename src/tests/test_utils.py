@@ -313,8 +313,8 @@ class TestUtils:
         ) == ['alpha', 'beta!', 'gamma']
 
 
-# spell-checker: disable
-# Too many random characters.
+    # spell-checker: disable
+    # Too many random characters.
 
     # ----------------------------------------------------------------------------------------------
     #   remove_punctuation() function
@@ -428,4 +428,4 @@ class TestUtils:
             'this string has the-separator inside it'
         ) == 'this-string-has-the-separator-inside-it'
 
-# spell-checker: enable
+    # spell-checker: enable

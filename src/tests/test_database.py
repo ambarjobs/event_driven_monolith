@@ -578,6 +578,185 @@ class TestDatabase:
         assert utils.deep_traversal(document_info, 'inexistent_field') is None
 
     # ----------------------------------------------------------------------------------------------
+    #   CouchDB.get_all_document() method
+    # ----------------------------------------------------------------------------------------------
+    # spell-checker: disable
+
+    def test_get_all_document__general_case(self, test_db: Db) -> None:
+        database_name = test_db.database_name
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+
+        first_record_id = 'first-record'
+        first_record_document = {
+            'fielda': 'value1a',
+            'fieldb': ['value1b1', 'value1b2'],
+            'fieldc': {
+                'fieldc1': 'val1c1',
+                'fieldc2': 'val1c2',
+            },
+        }
+
+        second_record_id = 'second-record'
+        second_record_document = {
+            'fielda': 'value2a',
+            'fieldb': ['value2b1', 'value2b2'],
+            'fieldc': {
+                'fieldc1': 'val2c1',
+                'fieldc2': 'val2c2',
+            },
+        }
+
+        test_db.create_document(document_id= first_record_id, body=first_record_document)
+        test_db.create_document(document_id= second_record_id, body=second_record_document)
+
+        documents_data = db.get_all_documents(database_name=database_name)
+
+        assert documents_data
+        assert len(documents_data) == 2
+
+        assert utils.deep_traversal(documents_data, 0, 'fielda') == 'value1a'
+        assert len(utils.deep_traversal(documents_data, 0, 'fieldb')) == 2
+        assert utils.deep_traversal(documents_data, 0, 'fieldb', 0) == 'value1b1'
+        assert utils.deep_traversal(documents_data, 0, 'fieldb', 1) == 'value1b2'
+        assert utils.deep_traversal(documents_data, 0, 'fieldc', 'fieldc1') == 'val1c1'
+        assert utils.deep_traversal(documents_data, 0, 'fieldc', 'fieldc2') == 'val1c2'
+
+        assert utils.deep_traversal(documents_data, 1, 'fielda') == 'value2a'
+        assert len(utils.deep_traversal(documents_data, 1, 'fieldb')) == 2
+        assert utils.deep_traversal(documents_data, 1, 'fieldb', 0) == 'value2b1'
+        assert utils.deep_traversal(documents_data, 1, 'fieldb', 1) == 'value2b2'
+        assert utils.deep_traversal(documents_data, 1, 'fieldc', 'fieldc1') == 'val2c1'
+        assert utils.deep_traversal(documents_data, 1, 'fieldc', 'fieldc2') == 'val2c2'
+
+    def test_get_all_document__specific_fields(self, test_db: Db) -> None:
+        database_name = test_db.database_name
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+
+        first_record_id = 'first-record'
+        first_record_document = {
+            'fielda': 'value1a',
+            'fieldb': ['value1b1', 'value1b2'],
+            'fieldc': {
+                'fieldc1': 'val1c1',
+                'fieldc2': 'val1c2',
+            },
+        }
+
+        second_record_id = 'second-record'
+        second_record_document = {
+            'fielda': 'value2a',
+            'fieldb': ['value2b1', 'value2b2'],
+            'fieldc': {
+                'fieldc1': 'val2c1',
+                'fieldc2': 'val2c2',
+            },
+        }
+
+        test_db.create_document(document_id= first_record_id, body=first_record_document)
+        test_db.create_document(document_id= second_record_id, body=second_record_document)
+
+        documents_data = db.get_all_documents(
+            database_name=database_name,
+            fields=['fielda', 'fieldc']
+        )
+
+        assert documents_data
+        assert len(documents_data) == 2
+
+        assert utils.deep_traversal(documents_data, 0, 'fielda') == 'value1a'
+        assert utils.deep_traversal(documents_data, 0, 'fieldb') is None
+        assert utils.deep_traversal(documents_data, 0, 'fieldc', 'fieldc1') == 'val1c1'
+        assert utils.deep_traversal(documents_data, 0, 'fieldc', 'fieldc2') == 'val1c2'
+
+        assert utils.deep_traversal(documents_data, 1, 'fielda') == 'value2a'
+        assert utils.deep_traversal(documents_data, 1, 'fieldb') is None
+        assert utils.deep_traversal(documents_data, 1, 'fieldc', 'fieldc1') == 'val2c1'
+        assert utils.deep_traversal(documents_data, 1, 'fieldc', 'fieldc2') == 'val2c2'
+
+    def test_get_all_document__empty_fields(self, test_db: Db) -> None:
+        database_name = test_db.database_name
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+
+        first_record_id = 'first-record'
+        first_record_document = {
+            'fielda': 'value1a',
+            'fieldb': ['value1b1', 'value1b2'],
+            'fieldc': {
+                'fieldc1': 'val1c1',
+                'fieldc2': 'val1c2',
+            },
+        }
+
+        second_record_id = 'second-record'
+        second_record_document = {
+            'fielda': 'value2a',
+            'fieldb': ['value2b1', 'value2b2'],
+            'fieldc': {
+                'fieldc1': 'val2c1',
+                'fieldc2': 'val2c2',
+            },
+        }
+
+        test_db.create_document(document_id= first_record_id, body=first_record_document)
+        test_db.create_document(document_id= second_record_id, body=second_record_document)
+
+        documents_data = db.get_all_documents(database_name=database_name, fields=[])
+
+        assert documents_data
+        assert len(documents_data) == 2
+
+        assert utils.deep_traversal(documents_data, 0, 'fielda') == 'value1a'
+        assert len(utils.deep_traversal(documents_data, 0, 'fieldb')) == 2
+        assert utils.deep_traversal(documents_data, 0, 'fieldb', 0) == 'value1b1'
+        assert utils.deep_traversal(documents_data, 0, 'fieldb', 1) == 'value1b2'
+        assert utils.deep_traversal(documents_data, 0, 'fieldc', 'fieldc1') == 'val1c1'
+        assert utils.deep_traversal(documents_data, 0, 'fieldc', 'fieldc2') == 'val1c2'
+
+        assert utils.deep_traversal(documents_data, 1, 'fielda') == 'value2a'
+        assert len(utils.deep_traversal(documents_data, 1, 'fieldb')) == 2
+        assert utils.deep_traversal(documents_data, 1, 'fieldb', 0) == 'value2b1'
+        assert utils.deep_traversal(documents_data, 1, 'fieldb', 1) == 'value2b2'
+        assert utils.deep_traversal(documents_data, 1, 'fieldc', 'fieldc1') == 'val2c1'
+        assert utils.deep_traversal(documents_data, 1, 'fieldc', 'fieldc2') == 'val2c2'
+
+    def test_get_all_document__no_documents(self, test_db: Db) -> None:
+        database_name = test_db.database_name
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+
+        documents_data = db.get_all_documents(database_name=database_name)
+
+        assert documents_data == []
+
+        # spell-checker: enable
+    # ----------------------------------------------------------------------------------------------
     #   CouchDB.clean_up_fields() method
     # ----------------------------------------------------------------------------------------------
     def test_clean_up_fields__general_case(self) -> None:

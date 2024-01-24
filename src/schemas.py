@@ -40,7 +40,7 @@ MEDIUM_LIST_ITEMS_LIMIT = 20
 class StatusDetails(BaseModel):
     """Service status details schema."""
     description: str
-    data: dict[str, Any] | None = None
+    data: dict[str, Any] = {}
     error_code: int | None = None
 
 
@@ -112,6 +112,13 @@ class RecipeEasiness(str, Enum):
     hard = 'hard'
 
 
+class RecipeStatus(str, Enum):
+    """Options of recipe status."""
+    available = 'available'
+    requested = 'requested'
+    purchased = 'purchased'
+
+
 class RecipeSummary(BaseModel):
     """Summary description of the recipe."""
     name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
@@ -133,8 +140,9 @@ class Recipe(BaseModel):
         default_factory=list,
         max_length=SMALL_FIELD_MAX_LENGTH,
     )
-    recipe: RecipeInformation
+    recipe: RecipeInformation | None = None
     price: float
+    status: RecipeStatus = RecipeStatus.available
     modif_datetime: AwareDatetime = datetime.now(tz=UTC)
 
     @computed_field(alias='recipe_id')  # type: ignore[misc]
@@ -142,3 +150,25 @@ class Recipe(BaseModel):
     def id(self) -> str:
         """Recipe `id` (serialized as `recipe_id`), that's a slug based on `summary.name`"""
         return utils.slugify(self.summary.name)
+
+    @classmethod
+    def from_record(cls, record: dict) -> 'Recipe':
+        """Return a Recipe schema from a `recipe` database record."""
+        db_summary = record.pop('summary')
+        summary = RecipeSummary(**db_summary)
+        recipe = RecipeInformation(**record.pop('recipe')) if 'recipe' in record else None
+        return cls(summary = summary, **record, recipe=recipe)
+
+    def to_json(self) -> dict:
+        """Return a JSON serializable representation of the Recipe."""
+        recipe_data = self.model_dump()
+        recipe_data['easiness'] =recipe_data['easiness'].value
+        recipe_data['status'] =recipe_data['status'].value
+        recipe_data['modif_datetime'] = recipe_data['modif_datetime'].isoformat()
+        return recipe_data
+
+
+class UserRecipe(BaseModel):
+    """User recipe representation."""
+    recipe_id: str
+    status: str

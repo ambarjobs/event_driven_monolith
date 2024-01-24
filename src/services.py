@@ -67,7 +67,6 @@ def handle_token(token: str) -> sch.ServiceStatus:
         error=False,
         details=sch.StatusDetails(
             description='OK.',
-            data={}
         ),
     )
 
@@ -76,7 +75,6 @@ def handle_token(token: str) -> sch.ServiceStatus:
         error=True,
         details=sch.StatusDetails(
             description='Invalid token.',
-            data={}
         ),
     )
 
@@ -85,7 +83,6 @@ def handle_token(token: str) -> sch.ServiceStatus:
         error=True,
         details=sch.StatusDetails(
             description='The token has expired.',
-            data={}
         ),
     )
     # ------------------------------------------------------------------------------------------
@@ -459,7 +456,7 @@ def parse_recipe_data(csv_data: dict[str, Any]) -> sch.Recipe:
         'directions'
     ]
 
-    if None in csv_data.values() or set(csv_data.keys()) < set(required_fields):
+    if None in csv_data.values() or (set(csv_data.keys()) < set(required_fields)):
         raise InvalidCsvFormatError
 
     description = '\n'.join(
@@ -483,6 +480,7 @@ def parse_recipe_data(csv_data: dict[str, Any]) -> sch.Recipe:
         **recipe_direct_data,
         tags=tags,
         recipe=recipe_info,
+        status=sch.RecipeStatus.available,
     )
 
 def import_csv_recipes(csv_file: io.BytesIO) -> list[sch.Recipe]:
@@ -509,6 +507,7 @@ def store_recipe(recipe: sch.Recipe) -> None:
     """Stores the recipe on database."""
     db_recipe = recipe.model_dump()
     db_recipe['easiness'] = recipe.easiness.value
+    db_recipe['status'] = recipe.status.value
     db_recipe['modif_datetime'] = recipe.modif_datetime.isoformat()
     recipe_id = db_recipe.pop('id')
     db.upsert_document(
@@ -516,3 +515,22 @@ def store_recipe(recipe: sch.Recipe) -> None:
         document_id=recipe_id,
         fields=db_recipe
     )
+
+def get_all_recipes() -> list[sch.Recipe]:
+    """Return all recipes on `recipe` database."""
+    recipes_fields = [field for field in sch.Recipe.model_fields if field != 'recipe']
+    db_all_recipes = db.get_all_documents(
+        database_name=config.RECIPES_DB_NAME,
+        fields=recipes_fields,
+    )
+    return [sch.Recipe.from_record(record=db_recipe) for db_recipe in db_all_recipes]
+
+def get_user_recipes(user_id: str) -> list[sch.UserRecipe]:
+    """Return user recipes on `user-recipe` database."""
+    db_user_recipes = db.get_document_by_id(
+        database_name=config.USER_RECIPES_DB_NAME,
+        document_id=user_id
+    )
+
+    user_recipes = utils.deep_traversal(db_user_recipes, 'recipes')
+    return [sch.UserRecipe(**recipe) for recipe in user_recipes]

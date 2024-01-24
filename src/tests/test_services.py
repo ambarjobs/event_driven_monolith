@@ -203,8 +203,8 @@ class TestServices:
         )
         assert auth_status.error is True
 
-        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        assert auth_status.details.data is None
+        # token would be in `auth_status.details.data`, but `data` is empty, so there is no `token`.
+        assert auth_status.details.data == {}
 
     def test_authentication__incorrect_password(
         self,
@@ -234,8 +234,8 @@ class TestServices:
         )
         assert auth_status.error is True
 
-        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        assert auth_status.details.data is None
+        # token would be in `auth_status.details.data`, but `data` is empty, so there is no `token`.
+        assert auth_status.details.data == {}
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -267,8 +267,8 @@ class TestServices:
         )
         assert auth_status.error is True
 
-        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        assert auth_status.details.data is None
+        # token would be in `auth_status.details.data`, but `data` is empty, so there is no `token`.
+        assert auth_status.details.data == {}
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -299,8 +299,8 @@ class TestServices:
         assert auth_status.details.description == 'User email is not validated.'
         assert auth_status.error is True
 
-        # token would be in `auth_status.details.data`, but `data` is None, so there is no `token`.
-        assert auth_status.details.data is None
+        # token would be in `auth_status.details.data`, but `data` is empty, so there is no `token`.
+        assert auth_status.details.data == {}
 
         credentials_data = credentials_db.get_document_by_id(user_credentials.id)
 
@@ -746,6 +746,7 @@ class TestServices:
         assert first_recipe.category == 'dessert'
         assert first_recipe.easiness == 'medium'
         assert first_recipe.price == 1.23
+        assert first_recipe.status == 'available'
         assert first_recipe.tags == ['dessert', 'lemon', 'cake']
         assert first_recipe.recipe.ingredients == [
             'lemon juice',
@@ -809,3 +810,65 @@ class TestServices:
                 document_id=recipe_id,
                 fields=fields
             )
+
+    # ==============================================================================================
+    #   get_all_recipes service
+    # ==============================================================================================
+    def test_get_all_recipes__general_case(
+        self,
+        test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+    ) -> None:
+        recipe_db = test_db
+        recipe_db.database_name = config.RECIPES_DB_NAME
+
+        recipe_db.create()
+        recipe_db.add_permissions()
+
+        recipes = (recipe, another_recipe, one_more_recipe)
+        for recipe_ in recipes:
+            srv.store_recipe(recipe=recipe_)
+
+        all_recipes = srv.get_all_recipes()
+
+        assert len(all_recipes) == len(recipes)
+        for recipe in recipes:
+            recipe.recipe = None
+            assert recipe in all_recipes
+
+
+    # ==============================================================================================
+    #   get_user_recipes service
+    # ==============================================================================================
+    def test_get_user_recipes__general_case(
+        self,
+        test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        user_id: str,
+    ) -> None:
+        user_recipe_db = test_db
+        user_recipe_db.database_name = config.USER_RECIPES_DB_NAME
+
+        user_recipe_db.create()
+        user_recipe_db.add_permissions()
+
+        recipe.status = 'purchased'
+        another_recipe.status = 'requested'
+        one_more_recipe.status = 'purchased'
+        recipes = (recipe, another_recipe, one_more_recipe)
+        user_recipes_data = {
+            'recipes': [{'recipe_id': recipe.id, 'status': recipe.status} for recipe in recipes]
+        }
+        user_recipe_db.create_document(document_id=user_id, body=user_recipes_data)
+
+        user_recipes = srv.get_user_recipes(user_id=user_id)
+
+        assert len(user_recipes) == len(recipes)
+        assert [
+            sch.UserRecipe(recipe_id=recipe.id, status=recipe.status)
+            for recipe in recipes
+        ] == user_recipes

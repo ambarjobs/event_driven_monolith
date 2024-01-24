@@ -46,6 +46,9 @@ APP_DATABASES_INFO = [
     DatabaseInfo(
         name=config.RECIPES_DB_NAME,
         indexes=[Index(name=f'{config.RECIPES_DB_NAME}-id--index', fields=['_id'])]),
+    DatabaseInfo(
+        name=config.USER_RECIPES_DB_NAME,
+        indexes=[Index(name=f'{config.USER_RECIPES_DB_NAME}-id--index', fields=['_id'])]),
 ]
 
 # ==================================================================================================

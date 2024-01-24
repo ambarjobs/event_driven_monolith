@@ -182,6 +182,29 @@ class CouchDb:
         document_info = utils.deep_traversal(response.json(), 'docs', 0)
         return document_info or {}
 
+    def get_all_documents(
+        self,
+        database_name: str,
+        fields: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get all documents in the database."""
+        selector = {
+            'selector': {
+                '_id': {'$gt': None}
+            },
+        }
+        selector['fields'] = fields or []
+
+        response = httpx.post(
+            url=f'{self.url}/{database_name}/_find',
+            auth=self.app_credentials,
+            json=selector,
+        ).raise_for_status()
+
+        document_info = utils.deep_traversal(response.json(), 'docs')
+        return document_info or []
+
+
     def clean_up_fields(self, fields: dict) -> dict:
         """Remove special fields from fields dict."""
         SPECIAL_FIELDS = ['_id', '_rev']

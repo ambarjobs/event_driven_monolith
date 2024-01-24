@@ -1,4 +1,4 @@
-# Event Driven Monolith PoC (Proof of Concept)
+# Event Driven Monolith PoC
 
 This project is a proof of concept (PoC) to study the viability, strengths, weaknesses and challenges of using an event driven architecture based on publish-subscribe pattern, but using a `monolith` instead of `microservices`.
 
@@ -75,7 +75,7 @@ This is a **work in progress**.
 
 Only part of the code was implemented, but what's implemented is functional.
 
-Unit tests are implemented to all code that is implemented (of course 🙂).
+There are unit tests for all code that is implemented (of course 🙂).
 
 Below there are the main parts of the project with indication of what has been implemented or not:
 

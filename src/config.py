@@ -43,6 +43,7 @@ USER_CREDENTIALS_DB_NAME = f'{DB_PREFIX}user-credentials'
 USER_INFO_DB_NAME = f'{DB_PREFIX}user-info'
 EMAIL_CONFIRMATION_DB_NAME = f'{DB_PREFIX}email-confirmation'
 RECIPES_DB_NAME = f'{DB_PREFIX}recipe'
+USER_RECIPES_DB_NAME = f'{DB_PREFIX}user-recipe'
 
 # --------------------------------------------------------------------------------------------------
 #  Authentication

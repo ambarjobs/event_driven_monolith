@@ -246,6 +246,30 @@ def load_recipes(
     token_status.details.description = 'Recipes loaded with success.'
     return JSONResponse(content=token_status.model_dump(), status_code=status.HTTP_201_CREATED)
 
+@app.get('/get-all-recipes')
+def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]):
+    """Return all recipes with basic information and status regarding the user."""
+    token_status = srv.handle_token(token=token)
+    if token_status.status in ('invalid_token', 'expired_token'):
+        return JSONResponse(
+            content=token_status.model_dump(),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    user_id = token_status.details.data.get('sub', '')
+    all_recipes = srv.get_all_recipes()
+    user_recipes = srv.get_user_recipes(user_id=user_id)
+    user_mapping = {recipe.recipe_id: recipe.status for recipe in user_recipes}
+
+    resulting_recipes = []
+    for recipe in all_recipes:
+        exclude_fields = {'recipe'}
+        if recipe.id in user_mapping:
+            exclude_fields.add('price')
+            recipe.status = sch.RecipeStatus(value=user_mapping[recipe.id])
+        resulting_recipes.append(recipe.model_dump(exclude=exclude_fields))
+    return {'recipes': resulting_recipes}
+
+
 # ==================================================================================================
 @app.get('/tst')
 def test(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONResponse:
