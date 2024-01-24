@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 from enum import Enum
 from typing import Annotated, Any
 
+from fastapi.encoders import jsonable_encoder
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -141,7 +142,7 @@ class Recipe(BaseModel):
         max_length=SMALL_FIELD_MAX_LENGTH,
     )
     recipe: RecipeInformation | None = None
-    price: float
+    price: float | None = None
     status: RecipeStatus = RecipeStatus.available
     modif_datetime: AwareDatetime = datetime.now(tz=UTC)
 
@@ -159,13 +160,9 @@ class Recipe(BaseModel):
         recipe = RecipeInformation(**record.pop('recipe')) if 'recipe' in record else None
         return cls(summary = summary, **record, recipe=recipe)
 
-    def to_json(self) -> dict:
+    def to_json(self, *args, **kwargs) -> dict:
         """Return a JSON serializable representation of the Recipe."""
-        recipe_data = self.model_dump()
-        recipe_data['easiness'] =recipe_data['easiness'].value
-        recipe_data['status'] =recipe_data['status'].value
-        recipe_data['modif_datetime'] = recipe_data['modif_datetime'].isoformat()
-        return recipe_data
+        return jsonable_encoder(self.model_dump(*args, **kwargs))
 
 
 class UserRecipe(BaseModel):

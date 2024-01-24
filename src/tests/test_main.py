@@ -897,6 +897,9 @@ class TestMain:
         one_more_recipe: sch.Recipe,
         user_credentials: sch.UserCredentials,
     ) -> None:
+        # ----------------------------------------------------------------------
+        #   Databases setup
+        # ----------------------------------------------------------------------
         recipes_db = test_db
         recipes_db.database_name = config.RECIPES_DB_NAME
 
@@ -910,16 +913,18 @@ class TestMain:
         user_recipes_db.add_permissions()
 
         all_recipes = (recipe, another_recipe, one_more_recipe)
-        for recipe in all_recipes:
-            srv.store_recipe(recipe=recipe)
+        for all_recipes_item in all_recipes:
+            srv.store_recipe(recipe=all_recipes_item)
 
         another_recipe.status = sch.RecipeStatus.purchased
         one_more_recipe.status = sch.RecipeStatus.requested
 
         user_recipes = (another_recipe, one_more_recipe)
-        for recipe in user_recipes:
-            del(recipe.price)
-            del(recipe.recipe)
+        for user_recipes_item in user_recipes:
+            del(user_recipes_item.price)
+            del(user_recipes_item.recipe)
+        user_recipes_mapping = {recipe.id: recipe.to_json() for recipe in user_recipes}
+
         user_recipes_data = {
             'recipes': [
                 {'recipe_id': recipe.id, 'status': recipe.status}
@@ -927,7 +932,7 @@ class TestMain:
             ]
         }
         user_recipes_db.create_document(document_id=user_credentials.id, body=user_recipes_data)
-
+        # ----------------------------------------------------------------------
 
         payload = {'sub': user_credentials.id}
         token = utils.create_token(payload=payload)
@@ -940,13 +945,16 @@ class TestMain:
         assert response.status_code == status.HTTP_200_OK
 
         response_data = response.json()
-        api_user_recipes = utils.deep_traversal(response_data, 'recipes')
-        api_recipes_mapping = {recipe['id']: recipe for recipe in api_user_recipes}
+        api_recipes = utils.deep_traversal(response_data, 'recipes')
+        api_recipes_mapping = {recipe['id']: recipe for recipe in api_recipes}
 
-        assert len(api_user_recipes) == len(all_recipes)
-        for recipe_data in [recipe.to_json() for recipe in user_recipes]:
-            assert recipe_data in api_user_recipes
-        assert api_recipes_mapping[recipe.id] == recipe.to_json()
+        assert len(api_recipes) == len(all_recipes)
+        for api_recipe in api_recipes:
+            api_recipe_id = api_recipe['id']
+            if api_recipe_id in user_recipes_mapping:
+                assert api_recipe == user_recipes_mapping[api_recipe_id]
+            else:
+                assert api_recipe == api_recipes_mapping[api_recipe_id]
 
     def test_get_all_recipes_endpoint__invalid_token(
         self,

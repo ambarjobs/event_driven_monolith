@@ -247,7 +247,7 @@ def load_recipes(
     return JSONResponse(content=token_status.model_dump(), status_code=status.HTTP_201_CREATED)
 
 @app.get('/get-all-recipes')
-def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]):
+def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONResponse:
     """Return all recipes with basic information and status regarding the user."""
     token_status = srv.handle_token(token=token)
     if token_status.status in ('invalid_token', 'expired_token'):
@@ -258,7 +258,8 @@ def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]):
     user_id = token_status.details.data.get('sub', '')
     all_recipes = srv.get_all_recipes()
     user_recipes = srv.get_user_recipes(user_id=user_id)
-    user_mapping = {recipe.recipe_id: recipe.status for recipe in user_recipes}
+    # Converts recipe.status to str be it Recipe.Status or already a str
+    user_mapping = {recipe.recipe_id: recipe.status.strip('') for recipe in user_recipes}
 
     resulting_recipes = []
     for recipe in all_recipes:
@@ -266,8 +267,8 @@ def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]):
         if recipe.id in user_mapping:
             exclude_fields.add('price')
             recipe.status = sch.RecipeStatus(value=user_mapping[recipe.id])
-        resulting_recipes.append(recipe.model_dump(exclude=exclude_fields))
-    return {'recipes': resulting_recipes}
+        resulting_recipes.append(recipe.to_json(exclude=exclude_fields))
+    return JSONResponse(content={'recipes': resulting_recipes}, status_code=status.HTTP_200_OK)
 
 
 # ==================================================================================================
