@@ -734,7 +734,13 @@ class TestServices:
         recipe_csv_file: io.BytesIO,
         this_moment: datetime
     ) -> None:
-        recipes = srv.import_csv_recipes(csv_file=recipe_csv_file)
+        import_recipes_status = srv.import_csv_recipes(csv_file=recipe_csv_file)
+
+        assert import_recipes_status.status == 'csv_imported'
+        assert import_recipes_status.error is False
+        assert import_recipes_status.details.description == 'CSV recipes file imported successfully.'
+
+        recipes = import_recipes_status.details.data['recipes']
 
         assert len(recipes) == 2
 
@@ -780,21 +786,47 @@ class TestServices:
 
     def test_import_csv_recipes__empty_file(self) -> None:
         recipe_csv_file = io.BytesIO(initial_bytes=b'')
-        recipes = srv.import_csv_recipes(csv_file=recipe_csv_file)
+        import_recipes_status = srv.import_csv_recipes(csv_file=recipe_csv_file)
+
+        assert import_recipes_status.status == 'csv_imported'
+        assert import_recipes_status.error is False
+        assert import_recipes_status.details.description == 'CSV recipes file imported successfully.'
+
+        recipes = import_recipes_status.details.data['recipes']
 
         assert recipes == []
 
     def test_import_csv_recipes__invalid_file(self) -> None:
         recipe_csv_file = io.BytesIO(initial_bytes=b'Some\tinvalid\tCSV\tfile')
 
-        with pytest.raises(InvalidCsvFormatError):
-            srv.import_csv_recipes(csv_file=recipe_csv_file)
+        import_recipes_status = srv.import_csv_recipes(csv_file=recipe_csv_file)
+
+        assert import_recipes_status.status == 'invalid_csv_format'
+        assert import_recipes_status.error is True
+        assert import_recipes_status.details.description == 'The format of the CSV file is invalid.'
+
 
     def test_import_csv_recipes__invalid_delimiter(self) -> None:
         recipe_csv_file = io.BytesIO(initial_bytes=b'Some,invalid,CSV,delimiter')
 
-        with pytest.raises(InvalidCsvFormatError):
-            srv.import_csv_recipes(csv_file=recipe_csv_file)
+        import_recipes_status = srv.import_csv_recipes(csv_file=recipe_csv_file)
+
+        assert import_recipes_status.status == 'invalid_csv_format'
+        assert import_recipes_status.error is True
+        assert import_recipes_status.details.description == 'The format of the CSV file is invalid.'
+
+    def test_import_csv_recipe__invalid_content(self, recipe_csv_file: io.BytesIO) -> None:
+        recipes_content = recipe_csv_file.read()
+        recipes_content += (
+            b'\n\tAnother great cake\tdessert\tmedium\t1.23\tdessert|cake\tanother thing|wheat flour'
+            b'|milk|sugar|butter\tMix everything.|Put it in a greased pan and put it in the oven.'
+        )
+        invalid_recipe_csv_file = io.BytesIO(initial_bytes=recipes_content)
+        import_recipes_status = srv.import_csv_recipes(csv_file=invalid_recipe_csv_file)
+
+        assert import_recipes_status.status == 'invalid_csv_content'
+        assert import_recipes_status.error is True
+        assert import_recipes_status.details.description == 'The content of the CSV file is invalid.'
 
     # ==============================================================================================
     #   store_recipe service

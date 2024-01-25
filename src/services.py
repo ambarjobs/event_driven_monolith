@@ -4,7 +4,7 @@
 import csv
 import io
 from datetime import datetime, timedelta, UTC
-from typing import Any
+from typing import Any, BinaryIO
 
 import httpx
 from fastapi import status
@@ -181,6 +181,12 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
         # ------------------------------------------------------------------------------------------
         #   Output status
         # ------------------------------------------------------------------------------------------
+        successful_logged_in_status = sch.ServiceStatus(
+            status='successfully_logged_in',
+            error=False,
+            details=sch.StatusDetails(description='User has successfully logged in.'),
+        )
+
         # Some situations below are aggregated into the same message in manner to avoid
         # username prospecting.
         incorrect_login_status = sch.ServiceStatus(
@@ -203,12 +209,6 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
             details=sch.StatusDetails(
                 description='User was already logged in and last token is still valid.'
             ),
-        )
-
-        successful_logged_in_status = sch.ServiceStatus(
-            status='successfully_logged_in',
-            error=False,
-            details=sch.StatusDetails(description='User has successfully logged in.'),
         )
         # ------------------------------------------------------------------------------------------
 
@@ -265,7 +265,7 @@ def email_confirmation(
     properties: BasicProperties,
     body: bytes
 ) -> None:
-    """Email confirmation service."""
+    """Email confirmation consumer service."""
     email_confirmation_info = sch.EmailConfirmationInfo.model_validate_json(body)
     token = utils.create_token(
         payload=email_confirmation_info.model_dump(),
@@ -306,6 +306,14 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
     # ------------------------------------------------------------------------------------------
     #   Output status
     # ------------------------------------------------------------------------------------------
+    confirmed_status = sch.ServiceStatus(
+        status='confirmed',
+        error=False,
+        details=sch.StatusDetails(
+            description='Email confirmed.'
+        ),
+    )
+
     invalid_token_status = sch.ServiceStatus(
         status='invalid_token',
         error=True,
@@ -335,14 +343,6 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
         error=True,
         details=sch.StatusDetails(
             description='The email was already confirmed.'
-        ),
-    )
-
-    confirmed_status = sch.ServiceStatus(
-        status='confirmed',
-        error=False,
-        details=sch.StatusDetails(
-            description='Email confirmed.'
         ),
     )
     # ------------------------------------------------------------------------------------------
@@ -412,7 +412,7 @@ def enable_user(
     properties: BasicProperties,
     body: bytes
 ) -> None:
-    """Mark user email as validated."""
+    """Mark user email as validated consumer service."""
     user_id = body.decode(config.APP_ENCODING_FORMAT)
 
     db.upsert_document(
@@ -475,16 +475,44 @@ def parse_recipe_data(csv_data: dict[str, Any]) -> sch.Recipe:
     )
 
     recipe_info = sch.RecipeInformation(ingredients=ingredients, directions=directions)
-    return sch.Recipe(
+    parsed_recipe = sch.Recipe(
         summary=summary,
         **recipe_direct_data,
         tags=tags,
         recipe=recipe_info,
         status=sch.RecipeStatus.available,
     )
+    return parsed_recipe
 
-def import_csv_recipes(csv_file: io.BytesIO) -> list[sch.Recipe]:
+def import_csv_recipes(csv_file: BinaryIO) -> sch.ServiceStatus:
     """Read a .csv file and return a list of schema objects representing the recipes."""
+    # ----------------------------------------------------------------------------------------------
+    #   Output status
+    # ----------------------------------------------------------------------------------------------
+    imported_csv_status = sch.ServiceStatus(
+        status='csv_imported',
+        error=False,
+        details=sch.StatusDetails(
+            description='CSV recipes file imported successfully.'
+        ),
+    )
+
+    invalid_csv_format_status = sch.ServiceStatus(
+        status='invalid_csv_format',
+        error=True,
+        details=sch.StatusDetails(
+            description='The format of the CSV file is invalid.'
+        ),
+    )
+
+    invalid_csv_content_status = sch.ServiceStatus(
+        status='invalid_csv_content',
+        error=True,
+        details=sch.StatusDetails(
+            description='The content of the CSV file is invalid.'
+        ),
+    )
+    # ----------------------------------------------------------------------------------------------
     csv_text_file = io.TextIOWrapper(csv_file, encoding=config.APP_ENCODING_FORMAT)
     recipe_reader = csv.DictReader(
         csv_text_file,
@@ -500,15 +528,19 @@ def import_csv_recipes(csv_file: io.BytesIO) -> list[sch.Recipe]:
         ],
         delimiter=config.CSV_FIELD_SEPARATOR,
     )
-    recipes_data = [parse_recipe_data(recipe) for recipe in recipe_reader]
-    return recipes_data
+    try:
+        recipes_data = [parse_recipe_data(recipe) for recipe in recipe_reader]
+    except InvalidCsvFormatError:
+        return invalid_csv_format_status
+    except ValidationError as err:
+        invalid_csv_content_status.details.data = {'errors': err.errors()}
+        return invalid_csv_content_status
+    imported_csv_status.details.data = {'recipes': recipes_data}
+    return imported_csv_status
 
 def store_recipe(recipe: sch.Recipe) -> None:
     """Stores the recipe on database."""
-    db_recipe = recipe.model_dump()
-    db_recipe['easiness'] = recipe.easiness.value
-    db_recipe['status'] = recipe.status.value
-    db_recipe['modif_datetime'] = recipe.modif_datetime.isoformat()
+    db_recipe = recipe.to_json()
     recipe_id = db_recipe.pop('id')
     db.upsert_document(
         database_name=config.RECIPES_DB_NAME,

@@ -222,6 +222,17 @@ def load_recipes(
     recipes_csv: UploadFile
 ) -> JSONResponse:
     """Load a .csv file with recipes content to the `recipe` database."""
+    # ----------------------------------------------------------------------------------------------
+    #   Output status
+    # ----------------------------------------------------------------------------------------------
+    recipes_loaded_status = sch.ServiceStatus(
+        status='recipes_loaded',
+        error=False,
+        details=sch.StatusDetails(
+            description='Recipes loaded successfully.'
+        ),
+    )
+    # ----------------------------------------------------------------------------------------------
     token_status = srv.handle_token(token=token)
     if token_status.status in ('invalid_token', 'expired_token'):
         return JSONResponse(
@@ -238,13 +249,22 @@ def load_recipes(
             status_code=status.HTTP_400_BAD_REQUEST
         )
 
-    recipes = srv.import_csv_recipes(csv_file=recipes_csv.file)
-    for recipe in recipes:
-        srv.store_recipe(recipe)
+    csv_import_status = srv.import_csv_recipes(csv_file=recipes_csv.file)
 
-    token_status.status = 'recipes_loaded'
-    token_status.details.description = 'Recipes loaded with success.'
-    return JSONResponse(content=token_status.model_dump(), status_code=status.HTTP_201_CREATED)
+    match csv_import_status:
+        case (
+                sch.ServiceStatus(status='invalid_csv_format') |
+                sch.ServiceStatus(status='invalid_csv_content')
+            ):
+            log.error(csv_import_status.details.description)
+            output_status = csv_import_status
+            status_code = status.HTTP_400_BAD_REQUEST
+        case _:
+            for recipe in csv_import_status.details.data['recipes']:
+                srv.store_recipe(recipe)
+            output_status = recipes_loaded_status
+            status_code = status.HTTP_201_CREATED
+    return JSONResponse(content=output_status.model_dump(), status_code=status_code)
 
 @app.get('/get-all-recipes')
 def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONResponse:
@@ -258,15 +278,17 @@ def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONRespon
     user_id = token_status.details.data.get('sub', '')
     all_recipes = srv.get_all_recipes()
     user_recipes = srv.get_user_recipes(user_id=user_id)
-    # Converts recipe.status to str be it Recipe.Status or already a str
-    user_mapping = {recipe.recipe_id: recipe.status.strip('') for recipe in user_recipes}
+    user_mapping = {
+        recipe.recipe_id: sch.RecipeStatus(value=recipe.status.strip(''))
+        for recipe in user_recipes
+    }
 
     resulting_recipes = []
     for recipe in all_recipes:
         exclude_fields = {'recipe'}
         if recipe.id in user_mapping:
             exclude_fields.add('price')
-            recipe.status = sch.RecipeStatus(value=user_mapping[recipe.id])
+            recipe.status = user_mapping[recipe.id]
         resulting_recipes.append(recipe.to_json(exclude=exclude_fields))
     return JSONResponse(content={'recipes': resulting_recipes}, status_code=status.HTTP_200_OK)
 

@@ -810,7 +810,7 @@ class TestMain:
             response_data,
             'details',
             'description'
-        ) == 'Recipes loaded with success.'
+        ) == 'Recipes loaded successfully.'
 
     def test_load_recipe__invalid_token(
         self,
