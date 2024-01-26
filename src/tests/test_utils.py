@@ -6,7 +6,7 @@ import config
 import pytest
 import string
 from jose import ExpiredSignatureError, jwt, JWTError
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 
 import utils
 from exceptions import InvalidAccessTokenKeyError
@@ -154,13 +154,13 @@ class TestUtils:
             )
 
     def test_create_token__no_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        test_payload: dict = {}
+        test_payload: JsonValue = {}
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value=None)
         with pytest.raises(InvalidAccessTokenKeyError):
             utils.create_token(payload=test_payload, expiration_hours=1.0)
 
     def test_create_token__invalid_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        test_payload: dict = {}
+        test_payload: JsonValue = {}
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value='')
         with pytest.raises(InvalidAccessTokenKeyError):
             utils.create_token(payload=test_payload, expiration_hours=1.0)

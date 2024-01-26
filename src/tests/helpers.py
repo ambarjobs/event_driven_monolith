@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import httpx
+from pydantic import JsonValue
 
 import utils
 from database import db, DbCredentials, Index
@@ -16,8 +17,8 @@ from database import db, DbCredentials, Index
 def access_database(
     access_function,
     url_parts: list | None = None,
-    headers: dict | None = None,
-    body: dict | None = None,
+    headers: JsonValue = None,
+    body: JsonValue = None,
     credentials: DbCredentials = db.app_credentials,
 ) -> Any:
     """Generic database access function."""
@@ -63,7 +64,7 @@ class Db:
             body=BODY,
         )
 
-    def create_document(self, document_id: str, body: dict[str, Any] | None = None) -> Any:
+    def create_document(self, document_id: str, body: JsonValue = None) -> Any:
         """Create a document on the database."""
         body = body or dict()
         response = access_database(

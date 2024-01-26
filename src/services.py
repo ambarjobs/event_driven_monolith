@@ -11,7 +11,7 @@ from fastapi import status
 from jose import ExpiredSignatureError, JWTError
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 import config
 import pubsub as ps
@@ -47,7 +47,7 @@ def http_error_status(error: httpx.HTTPStatusError) -> sch.ServiceStatus:
 # ==================================================================================================
 #   Generic functions
 # ==================================================================================================
-def user_is_logged_in(db_user_credentials: dict[str, Any]) -> bool:
+def user_is_logged_in(db_user_credentials: JsonValue) -> bool:
     """Check if user is logged in."""
     this_moment = datetime.now(tz=UTC)
 

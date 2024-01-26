@@ -11,7 +11,7 @@ from typing import Any
 
 import bcrypt
 from jose import jwt
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 
 import config
 from exceptions import InvalidAccessTokenKeyError
@@ -52,7 +52,7 @@ def check_password(password: SecretStr, hash_value: str) -> bool:
 #   Tokens
 # --------------------------------------------------------------------------------------------------
 def create_token(
-    payload: dict | None = None,
+    payload: JsonValue = None,
     expiration_hours = float(config.TOKEN_DEFAULT_EXPIRATION_HOURS)
 ) -> str:
     """Create a signed JWT."""
