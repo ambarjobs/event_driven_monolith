@@ -188,7 +188,7 @@ class CouchDb:
         fields: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Get all documents in the database."""
-        selector = {
+        selector: dict = {
             'selector': {
                 '_id': {'$gt': None}
             },
@@ -246,6 +246,8 @@ class CouchDb:
                     auth=self.app_credentials,
                     json=self.clean_up_fields(fields),
                 ).raise_for_status()
+            else:
+                raise err
         response_json = response.json() if response else None
         return utils.deep_traversal(response_json, 'rev')
 

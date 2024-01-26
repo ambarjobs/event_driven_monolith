@@ -14,6 +14,7 @@ import config
 import services as srv
 import schemas as sch
 import utils
+from database import DbCredentials
 from main import app
 from tests.helpers import Db
 
@@ -885,6 +886,57 @@ class TestMain:
             'description'
         ) == 'Only application admin can load recipes.'
 
+    def test_load_recipe__error_storing_recipe(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        admin_credentials: sch.UserCredentials,
+        recipe_csv_file: io.BytesIO,
+        invalid_db_credentials: DbCredentials,
+    ) -> None:
+        credentials_db = test_db
+        credentials_db.database_name = config.USER_CREDENTIALS_DB_NAME
+
+        recipes_db = another_test_db
+        recipes_db.database_name = config.RECIPES_DB_NAME
+
+        credentials_db.create()
+        credentials_db.add_permissions()
+
+        recipes_db.create()
+        recipes_db.add_permissions()
+
+        sign_up_hash = utils.calc_hash(password=admin_credentials.password)
+        sign_up_body = {
+            'hash': sign_up_hash,
+            'validated': True
+        }
+        # Minimal sign up.
+        credentials_db.create_document(document_id=admin_credentials.id, body=sign_up_body)
+
+        payload = {'sub': admin_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        with mock.patch.object(target=srv.db, attribute='app_credentials', new=invalid_db_credentials):
+            response = client.post(
+                url='/load-recipes',
+                files={'recipes_csv': recipe_csv_file},
+                headers={'Authorization': f'Bearer {token}'}
+            )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'error_loading_recipes'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'An error ocurred trying to load the recipes.'
+        assert list(
+            utils.deep_traversal(response_data, 'details', 'data')
+        ) == ['lemon-cake', 'baked-potatoes']
+
     # ==============================================================================================
     #   /get-all-recipes endpoint test
     # ==============================================================================================
@@ -944,8 +996,16 @@ class TestMain:
 
         assert response.status_code == status.HTTP_200_OK
 
-        response_data = response.json()
-        api_recipes = utils.deep_traversal(response_data, 'recipes')
+        all_recipe_status = response.json()
+        assert utils.deep_traversal(all_recipe_status, 'status') == 'all_recipes_retrieved'
+        assert utils.deep_traversal(all_recipe_status, 'error') is False
+        assert utils.deep_traversal(
+            all_recipe_status,
+            'details',
+            'description'
+        ) == 'All recipes retrieved successfully.'
+
+        api_recipes = utils.deep_traversal(all_recipe_status, 'details', 'data', 'all_recipes')
         api_recipes_mapping = {recipe['id']: recipe for recipe in api_recipes}
 
         assert len(api_recipes) == len(all_recipes)
@@ -955,6 +1015,57 @@ class TestMain:
                 assert api_recipe == user_recipes_mapping[api_recipe_id]
             else:
                 assert api_recipe == api_recipes_mapping[api_recipe_id]
+
+    def test_get_all_recipes_endpoint__recipe_reading_error(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        user_credentials: sch.UserCredentials,
+        invalid_db_credentials: DbCredentials,
+    ) -> None:
+        # ----------------------------------------------------------------------
+        #   Databases setup
+        # ----------------------------------------------------------------------
+        recipes_db = test_db
+        recipes_db.database_name = config.RECIPES_DB_NAME
+
+        user_recipes_db = another_test_db
+        user_recipes_db.database_name = config.USER_RECIPES_DB_NAME
+
+        recipes_db.create()
+        recipes_db.add_permissions()
+
+        user_recipes_db.create()
+        user_recipes_db.add_permissions()
+        # ----------------------------------------------------------------------
+
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        with mock.patch.object(
+            target=srv.db,
+            attribute='app_credentials',
+            new=invalid_db_credentials,
+        ):
+            response = client.get(
+                url='/get-all-recipes',
+                headers={'Authorization': f'Bearer {token}'}
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        all_recipe_status = response.json()
+        assert utils.deep_traversal(all_recipe_status, 'status') == 'error_getting_all_recipes'
+        assert utils.deep_traversal(all_recipe_status, 'error') is True
+        assert utils.deep_traversal(
+            all_recipe_status,
+            'details',
+            'description'
+        ) == 'An error ocurred trying to get all recipes.'
+
 
     def test_get_all_recipes_endpoint__invalid_token(
         self,

@@ -538,31 +538,89 @@ def import_csv_recipes(csv_file: BinaryIO) -> sch.ServiceStatus:
     imported_csv_status.details.data = {'recipes': recipes_data}
     return imported_csv_status
 
-def store_recipe(recipe: sch.Recipe) -> None:
+def store_recipe(recipe: sch.Recipe) -> sch.ServiceStatus:
     """Stores the recipe on database."""
+    # ----------------------------------------------------------------------------------------------
+    #   Output status
+    # ----------------------------------------------------------------------------------------------
+    recipe_stored_status = sch.ServiceStatus(
+        status='recipe_stored',
+        error=False,
+        details=sch.StatusDetails(
+            description='The recipe was stored successfully.'
+        ),
+    )
+    # ----------------------------------------------------------------------------------------------
     db_recipe = recipe.to_json()
     recipe_id = db_recipe.pop('id')
-    db.upsert_document(
-        database_name=config.RECIPES_DB_NAME,
-        document_id=recipe_id,
-        fields=db_recipe
-    )
+    try:
+        db.upsert_document(
+            database_name=config.RECIPES_DB_NAME,
+            document_id=recipe_id,
+            fields=db_recipe
+        )
+        return recipe_stored_status
+    except httpx.HTTPStatusError as err:
+        error_status = http_error_status(error=err)
+        error_status.status = 'error_storing_recipe'
+        error_status.details.description = 'An error ocurred trying to store the recipe.'
+        return error_status
 
-def get_all_recipes() -> list[sch.Recipe]:
+def get_all_recipes() -> sch.ServiceStatus:
     """Return all recipes on `recipe` database."""
+    # ----------------------------------------------------------------------------------------------
+    #   Output status
+    # ----------------------------------------------------------------------------------------------
+    all_recipes_status = sch.ServiceStatus(
+        status='all_recipes_retrieved',
+        error=False,
+        details=sch.StatusDetails(
+            description='All recipes retrieved successfully.'
+        ),
+    )
+    # ----------------------------------------------------------------------------------------------
     recipes_fields = [field for field in sch.Recipe.model_fields if field != 'recipe']
-    db_all_recipes = db.get_all_documents(
-        database_name=config.RECIPES_DB_NAME,
-        fields=recipes_fields,
-    )
-    return [sch.Recipe.from_record(record=db_recipe) for db_recipe in db_all_recipes]
+    try:
+        db_all_recipes = db.get_all_documents(
+            database_name=config.RECIPES_DB_NAME,
+            fields=recipes_fields,
+        )
+        all_recipes_status.details.data = {
+            'all_recipes': [sch.Recipe.from_record(record=db_recipe)
+            for db_recipe in db_all_recipes]
+        }
+        return all_recipes_status
+    except httpx.HTTPStatusError as err:
+        error_status = http_error_status(error=err)
+        error_status.status = 'error_retrieving_all_recipes'
+        error_status.details.description = 'An error ocurred trying to retrieve all recipes.'
+        return error_status
 
-def get_user_recipes(user_id: str) -> list[sch.UserRecipe]:
+def get_user_recipes(user_id: str) -> sch.ServiceStatus:
     """Return user recipes on `user-recipe` database."""
-    db_user_recipes = db.get_document_by_id(
-        database_name=config.USER_RECIPES_DB_NAME,
-        document_id=user_id
+    # ----------------------------------------------------------------------------------------------
+    #   Output status
+    # ----------------------------------------------------------------------------------------------
+    user_recipes_status = sch.ServiceStatus(
+        status='user_recipes_retrieved',
+        error=False,
+        details=sch.StatusDetails(
+            description='User recipes retrieved successfully.'
+        ),
     )
-
-    user_recipes = utils.deep_traversal(db_user_recipes, 'recipes')
-    return [sch.UserRecipe(**recipe) for recipe in user_recipes]
+    # ----------------------------------------------------------------------------------------------
+    try:
+        db_user_recipes = db.get_document_by_id(
+            database_name=config.USER_RECIPES_DB_NAME,
+            document_id=user_id
+        )
+        user_recipes = utils.deep_traversal(db_user_recipes, 'recipes')
+        user_recipes_status.details.data = {
+            'user_recipes': [sch.UserRecipe(**recipe) for recipe in user_recipes]
+        }
+        return user_recipes_status
+    except httpx.HTTPStatusError as err:
+        error_status = http_error_status(error=err)
+        error_status.status = 'error_retrieving_user_recipes'
+        error_status.details.description = 'An error ocurred trying to retrieve user recipes.'
+        return error_status

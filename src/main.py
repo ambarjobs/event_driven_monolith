@@ -232,6 +232,14 @@ def load_recipes(
             description='Recipes loaded successfully.'
         ),
     )
+
+    error_loading_recipe_status = sch.ServiceStatus(
+        status='error_loading_recipes',
+        error=True,
+        details=sch.StatusDetails(
+            description='An error ocurred trying to load the recipes.'
+        ),
+    )
     # ----------------------------------------------------------------------------------------------
     token_status = srv.handle_token(token=token)
     if token_status.status in ('invalid_token', 'expired_token'):
@@ -260,15 +268,42 @@ def load_recipes(
             output_status = csv_import_status
             status_code = status.HTTP_400_BAD_REQUEST
         case _:
+            recipes_errors = {}
             for recipe in csv_import_status.details.data['recipes']:
-                srv.store_recipe(recipe)
-            output_status = recipes_loaded_status
-            status_code = status.HTTP_201_CREATED
+                store_recipe_status = srv.store_recipe(recipe)
+                if store_recipe_status.status == 'error_storing_recipe':
+                    recipes_errors[recipe.id] = store_recipe_status.details.data
+            if recipes_errors:
+                error_loading_recipe_status.details.data = recipes_errors
+                output_status = error_loading_recipe_status
+                status_code = status.HTTP_400_BAD_REQUEST
+            else:
+                output_status = recipes_loaded_status
+                status_code = status.HTTP_201_CREATED
     return JSONResponse(content=output_status.model_dump(), status_code=status_code)
 
 @app.get('/get-all-recipes')
 def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONResponse:
     """Return all recipes with basic information and status regarding the user."""
+    # ----------------------------------------------------------------------------------------------
+    #   Output status
+    # ----------------------------------------------------------------------------------------------
+    all_recipes_status = sch.ServiceStatus(
+        status='all_recipes_retrieved',
+        error=False,
+        details=sch.StatusDetails(
+            description='All recipes retrieved successfully.'
+        ),
+    )
+
+    error_getting_all_recipe_status = sch.ServiceStatus(
+        status='error_getting_all_recipes',
+        error=True,
+        details=sch.StatusDetails(
+            description='An error ocurred trying to get all recipes.'
+        ),
+    )
+    # ----------------------------------------------------------------------------------------------
     token_status = srv.handle_token(token=token)
     if token_status.status in ('invalid_token', 'expired_token'):
         return JSONResponse(
@@ -276,21 +311,38 @@ def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONRespon
             status_code=status.HTTP_400_BAD_REQUEST
         )
     user_id = token_status.details.data.get('sub', '')
-    all_recipes = srv.get_all_recipes()
-    user_recipes = srv.get_user_recipes(user_id=user_id)
-    user_mapping = {
-        recipe.recipe_id: sch.RecipeStatus(value=recipe.status.strip(''))
-        for recipe in user_recipes
-    }
+    all_recipes_service_status = srv.get_all_recipes()
+    user_recipes_service_status = srv.get_user_recipes(user_id=user_id)
 
-    resulting_recipes = []
-    for recipe in all_recipes:
-        exclude_fields = {'recipe'}
-        if recipe.id in user_mapping:
-            exclude_fields.add('price')
-            recipe.status = user_mapping[recipe.id]
-        resulting_recipes.append(recipe.to_json(exclude=exclude_fields))
-    return JSONResponse(content={'recipes': resulting_recipes}, status_code=status.HTTP_200_OK)
+    if all_recipes_service_status.error:
+        status_code = status.HTTP_400_BAD_REQUEST
+        output_status = error_getting_all_recipe_status
+        output_status.details.data = all_recipes_service_status.details.data
+    elif user_recipes_service_status.error:
+        status_code = status.HTTP_400_BAD_REQUEST
+        output_status = error_getting_all_recipe_status
+        output_status.details.data = user_recipes_service_status.details.data
+    else:
+        all_recipes = all_recipes_service_status.details.data['all_recipes']
+        user_recipes = user_recipes_service_status.details.data['user_recipes']
+        user_mapping = {
+            recipe.recipe_id: sch.RecipeStatus(value=recipe.status)
+            for recipe in user_recipes
+        }
+
+        resulting_recipes = []
+        for recipe in all_recipes:
+            exclude_fields = {'recipe'}
+            if recipe.id in user_mapping:
+                exclude_fields.add('price')
+                recipe.status = user_mapping[recipe.id]
+            resulting_recipes.append(recipe.to_json(exclude=exclude_fields))
+
+        status_code = status.HTTP_200_OK
+        output_status = all_recipes_status
+        output_status.details.data = {'all_recipes': resulting_recipes}
+
+    return JSONResponse(content=output_status.model_dump(), status_code=status_code)
 
 
 # ==================================================================================================

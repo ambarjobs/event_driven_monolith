@@ -14,6 +14,7 @@ import config
 import pubsub as ps
 import schemas as sch
 import utils
+from database import DbCredentials
 from tests.helpers import Db
 
 
@@ -138,10 +139,10 @@ def another_test_db() -> Db:
 
 
 @pytest.fixture
-def user_credentials(password) -> sch.UserCredentials:
+def user_credentials(user_id, password) -> sch.UserCredentials:
     """Test user credentials."""
     return sch.UserCredentials(
-        id=f'{config.TEST_PREFIX}@user.id',
+        id=user_id,
         password=password
     )
 
@@ -166,6 +167,13 @@ def clean_databases() -> None:
         config.USER_RECIPES_DB_NAME
     ):
         Db(database_name=database_name).delete()
+
+
+@pytest.fixture
+def invalid_db_credentials() -> DbCredentials:
+    """Invalid Db credentials."""
+    return DbCredentials(user='inexistent', password='invalid')
+
 
 # --------------------------------------------------------------------------------------------------
 #   Pubsub

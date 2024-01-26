@@ -15,6 +15,7 @@ import config
 import schemas as sch
 import services as srv
 import utils
+from database import DbCredentials
 from exceptions import InvalidCsvFormatError
 from tests.helpers import Db
 
@@ -690,7 +691,10 @@ class TestServices:
         # `recipe.modif_datetime` generated recently.
         assert recipe.modif_datetime - this_moment < timedelta(seconds=config.TEST_EXECUTION_LIMIT)
 
-    def test_parse_recipe_data__missing_required_field(self, recipe_csv_data: dict[str, Any]) -> None:
+    def test_parse_recipe_data__missing_required_field(
+        self,
+        recipe_csv_data: dict[str, Any]
+    ) -> None:
         del(recipe_csv_data['name'])
 
         with pytest.raises(InvalidCsvFormatError):
@@ -738,7 +742,9 @@ class TestServices:
 
         assert import_recipes_status.status == 'csv_imported'
         assert import_recipes_status.error is False
-        assert import_recipes_status.details.description == 'CSV recipes file imported successfully.'
+        assert (
+            import_recipes_status.details.description == 'CSV recipes file imported successfully.'
+        )
 
         recipes = import_recipes_status.details.data['recipes']
 
@@ -790,7 +796,9 @@ class TestServices:
 
         assert import_recipes_status.status == 'csv_imported'
         assert import_recipes_status.error is False
-        assert import_recipes_status.details.description == 'CSV recipes file imported successfully.'
+        assert (
+            import_recipes_status.details.description == 'CSV recipes file imported successfully.'
+        )
 
         recipes = import_recipes_status.details.data['recipes']
 
@@ -818,7 +826,7 @@ class TestServices:
     def test_import_csv_recipe__invalid_content(self, recipe_csv_file: io.BytesIO) -> None:
         recipes_content = recipe_csv_file.read()
         recipes_content += (
-            b'\n\tAnother great cake\tdessert\tmedium\t1.23\tdessert|cake\tanother thing|wheat flour'
+            b'\n\tAnother great cake\tdessert\tmedium\t1.23\tdessert|cake\tanother thing|corn flour'
             b'|milk|sugar|butter\tMix everything.|Put it in a greased pan and put it in the oven.'
         )
         invalid_recipe_csv_file = io.BytesIO(initial_bytes=recipes_content)
@@ -826,14 +834,16 @@ class TestServices:
 
         assert import_recipes_status.status == 'invalid_csv_content'
         assert import_recipes_status.error is True
-        assert import_recipes_status.details.description == 'The content of the CSV file is invalid.'
+        assert (
+            import_recipes_status.details.description == 'The content of the CSV file is invalid.'
+        )
 
     # ==============================================================================================
     #   store_recipe service
     # ==============================================================================================
     def test_store_recipe__general_case(self, recipe) -> None:
         with mock.patch(target='database.CouchDb.upsert_document') as mock_upsert:
-            srv.store_recipe(recipe)
+            store_status = srv.store_recipe(recipe)
             fields = recipe.model_dump()
             recipe_id = fields.pop('id')
             fields['modif_datetime'] = fields['modif_datetime'].isoformat()
@@ -842,6 +852,30 @@ class TestServices:
                 document_id=recipe_id,
                 fields=fields
             )
+
+        assert store_status.status == 'recipe_stored'
+        assert store_status.error is False
+        assert store_status.details.description == 'The recipe was stored successfully.'
+
+    def test_store_recipe__database_errors(
+        self,
+        recipe: sch.Recipe,
+        invalid_db_credentials: DbCredentials
+    ) -> None:
+        with mock.patch.object(
+            target=srv.db,
+            attribute='app_credentials',
+            new=invalid_db_credentials,
+        ):
+            store_status = srv.store_recipe(recipe)
+
+        assert store_status.status == 'error_storing_recipe'
+        assert store_status.error is True
+        assert store_status.details.description == 'An error ocurred trying to store the recipe.'
+        assert store_status.details.data['errors'] == {
+            'error': 'unauthorized',
+            'reason': 'Name or password is incorrect.'
+        }
 
     # ==============================================================================================
     #   get_all_recipes service
@@ -863,12 +897,54 @@ class TestServices:
         for recipe_ in recipes:
             srv.store_recipe(recipe=recipe_)
 
-        all_recipes = srv.get_all_recipes()
+        all_recipes_status = srv.get_all_recipes()
+
+        assert all_recipes_status.status == 'all_recipes_retrieved'
+        assert all_recipes_status.error is False
+        assert all_recipes_status.details.description == 'All recipes retrieved successfully.'
+
+        all_recipes = all_recipes_status.details.data['all_recipes']
 
         assert len(all_recipes) == len(recipes)
         for recipe in recipes:
             recipe.recipe = None
             assert recipe in all_recipes
+
+    def test_get_all_recipes__database_error(
+        self,
+        test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        invalid_db_credentials: DbCredentials,
+    ) -> None:
+        recipe_db = test_db
+        recipe_db.database_name = config.RECIPES_DB_NAME
+
+        recipe_db.create()
+        recipe_db.add_permissions()
+
+        recipes = (recipe, another_recipe, one_more_recipe)
+        for recipe_ in recipes:
+            srv.store_recipe(recipe=recipe_)
+
+        with mock.patch.object(
+            target=srv.db,
+            attribute='app_credentials',
+            new=invalid_db_credentials,
+        ):
+            all_recipes_status = srv.get_all_recipes()
+
+        assert all_recipes_status.status == 'error_retrieving_all_recipes'
+        assert all_recipes_status.error is True
+        assert (
+            all_recipes_status.details.description ==
+            'An error ocurred trying to retrieve all recipes.'
+        )
+        assert all_recipes_status.details.data['errors'] == {
+            'error': 'unauthorized',
+            'reason': 'Name or password is incorrect.'
+        }
 
 
     # ==============================================================================================
@@ -897,10 +973,57 @@ class TestServices:
         }
         user_recipe_db.create_document(document_id=user_id, body=user_recipes_data)
 
-        user_recipes = srv.get_user_recipes(user_id=user_id)
+        user_recipes_status = srv.get_user_recipes(user_id=user_id)
 
+        assert user_recipes_status.status == 'user_recipes_retrieved'
+        assert user_recipes_status.error is False
+        assert user_recipes_status.details.description == 'User recipes retrieved successfully.'
+
+        user_recipes = user_recipes_status.details.data['user_recipes']
         assert len(user_recipes) == len(recipes)
         assert [
             sch.UserRecipe(recipe_id=recipe.id, status=recipe.status)
             for recipe in recipes
         ] == user_recipes
+
+    def test_get_user_recipes__database_error(
+        self,
+        test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        user_id: str,
+        invalid_db_credentials: DbCredentials,
+    ) -> None:
+        user_recipe_db = test_db
+        user_recipe_db.database_name = config.USER_RECIPES_DB_NAME
+
+        user_recipe_db.create()
+        user_recipe_db.add_permissions()
+
+        recipe.status = 'purchased'
+        another_recipe.status = 'requested'
+        one_more_recipe.status = 'purchased'
+        recipes = (recipe, another_recipe, one_more_recipe)
+        user_recipes_data = {
+            'recipes': [{'recipe_id': recipe.id, 'status': recipe.status} for recipe in recipes]
+        }
+        user_recipe_db.create_document(document_id=user_id, body=user_recipes_data)
+
+        with mock.patch.object(
+            target=srv.db,
+            attribute='app_credentials',
+            new=invalid_db_credentials,
+        ):
+            user_recipes_status = srv.get_user_recipes(user_id=user_id)
+
+        assert user_recipes_status.status == 'error_retrieving_user_recipes'
+        assert user_recipes_status.error is True
+        assert (
+            user_recipes_status.details.description ==
+            'An error ocurred trying to retrieve user recipes.'
+        )
+        assert user_recipes_status.details.data['errors'] == {
+            'error': 'unauthorized',
+            'reason': 'Name or password is incorrect.'
+        }

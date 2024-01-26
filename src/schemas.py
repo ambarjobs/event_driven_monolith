@@ -2,7 +2,7 @@
 #  Application schemas (validation and serialization)
 # ==================================================================================================
 from datetime import datetime, UTC
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Any
 
 from fastapi.encoders import jsonable_encoder
@@ -106,14 +106,14 @@ def no_empty_list(value: list[str]) -> list:
 NoEmptyList = Annotated[list[str], AfterValidator(no_empty_list)]
 
 
-class RecipeEasiness(str, Enum):
+class RecipeEasiness(StrEnum):
     """Options of recipe easiness."""
     easy = 'easy'
     medium = 'medium'
     hard = 'hard'
 
 
-class RecipeStatus(str, Enum):
+class RecipeStatus(StrEnum):
     """Options of recipe status."""
     available = 'available'
     requested = 'requested'

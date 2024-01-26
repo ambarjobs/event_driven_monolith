@@ -2,13 +2,15 @@
 #  Database module tests
 # ==================================================================================================
 import os
+from unittest import mock
 
 import httpx
 import pytest
+from fastapi import status
 
 import config
 import utils
-from database import DatabaseInfo, Index, db
+from database import DatabaseInfo, DbCredentials, Index, db
 from exceptions import InvalidCouchDBCredentialError
 from tests.helpers import access_database, Db
 
@@ -1018,3 +1020,36 @@ class TestDatabase:
         assert utils.deep_traversal(document_data, 'field1') == 'value1'
         assert utils.deep_traversal(document_data, 'field2') == 'value2'
         assert utils.deep_traversal(document_data, 'field3') == 'value3'
+
+    def test_upsert_document__other_errors(
+        self,
+        test_db: Db,
+        user_id: str,
+        invalid_db_credentials: DbCredentials
+    ) -> None:
+        database_name = test_db.database_name
+        document_id = user_id
+        all_fields = {'field1': 'value1', 'field2': 'value2', 'field3': 'value3'}
+
+        test_db.create()
+        test_db.add_permissions()
+        test_db.create_indexes(
+            indexes=[
+                Index(name=f'{database_name}-id-index', fields=['_id'])
+            ]
+        )
+
+        with pytest.raises(httpx.HTTPStatusError) as excinfo:
+            with mock.patch.object(target=db, attribute='app_credentials', new=invalid_db_credentials):
+                # db.app_credentials = invalid_db_credentials
+                db.upsert_document(
+                    database_name=database_name,
+                    document_id=document_id,
+                    fields=all_fields
+                )
+
+        assert excinfo.value.response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert excinfo.value.response.json() == {
+            'error': 'unauthorized',
+            'reason': 'Name or password is incorrect.'
+        }
