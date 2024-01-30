@@ -10,6 +10,7 @@ from pydantic import SecretStr, ValidationError
 
 import config
 import core
+import output_status as ost
 import schemas as sch
 import services as srv
 from config import logging as log
@@ -46,10 +47,10 @@ def signup(
         base_url=str(request.base_url)
     )
     match sign_up_status:
-        case sch.ServiceStatus(status='user_already_signed_up'):
+        case sch.OutputStatus(status='user_already_signed_up'):
             log.warning(f'User already signed up: {credentials.id}')
             status_code = status.HTTP_409_CONFLICT
-        case sch.ServiceStatus(status='http_error'):
+        case sch.OutputStatus(status='http_error'):
             error_code = sign_up_status.details.error_code
             log.error(f'Signin endpoint error: {error_code}')
             status_code = error_code or 500
@@ -65,39 +66,31 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
 
     Returns a JWT token to access other endpoints through OAuth2.
     """
-    # ----------------------------------------------------------------------------------------------
-    #   Output status
-    # ----------------------------------------------------------------------------------------------
-    invalid_credentials_format_status = sch.ServiceStatus(
-            status='invalid_credentials_format',
-            error=True,
-            details=sch.StatusDetails(description='The credentials are in an invalid format.'),
-        )
-    # ----------------------------------------------------------------------------------------------
     try:
         credentials =oauth2form_to_credentials(form_data=form)
     except ValidationError as err:
-        invalid_credentials_format_status.details.data = {'errors': err.errors()}
+        output_status = ost.api_invalid_credentials_format_status()
+        output_status.details.data = {'errors': err.errors()}
         return JSONResponse(
-            content=invalid_credentials_format_status.model_dump(),
+            content=output_status.model_dump(),
             status_code=status.HTTP_400_BAD_REQUEST
         )
     login_status = srv.authentication(credentials=credentials)
     match login_status:
         case (
-            sch.ServiceStatus(status='incorrect_login_credentials') |
-            sch.ServiceStatus(status='email_not_validated')
+            sch.OutputStatus(status='incorrect_login_credentials') |
+            sch.OutputStatus(status='email_not_validated')
         ):
             log.warning(f'Login non authorized: {credentials.id}')
             status_code = status.HTTP_401_UNAUTHORIZED
-        case sch.ServiceStatus(status='http_error'):
+        case sch.OutputStatus(status='http_error'):
             error_code = login_status.details.error_code
             log.error(f'login endpoint error: {error_code}')
             status_code = error_code or 500
-        case sch.ServiceStatus(status='user_already_logged_in'):
+        case sch.OutputStatus(status='user_already_logged_in'):
             log.info(f'User already logged in: {credentials.id}')
             status_code = status.HTTP_200_OK
-        case sch.ServiceStatus(status='successfully_logged_in'):
+        case sch.OutputStatus(status='successfully_logged_in'):
             log.info(f'User logged in: {credentials.id}')
             status_code = status.HTTP_200_OK
     return JSONResponse(content=login_status.model_dump(), status_code=status_code)
@@ -117,18 +110,18 @@ def confirm_email_api(token_data: sch.EmailConfirmationToken) -> JSONResponse:
     )
     match confirmation_status:
         case (
-            sch.ServiceStatus(status='invalid_token') |
-            sch.ServiceStatus(status='expired_token')
+            sch.OutputStatus(status='invalid_token') |
+            sch.OutputStatus(status='expired_token')
         ):
             log.error(f'Invalid token: {token}')
             status_code = status.HTTP_400_BAD_REQUEST
-        case sch.ServiceStatus(status='inexistent_token'):
+        case sch.OutputStatus(status='inexistent_token'):
             log.error(f'Inexistent token: {token}')
             status_code = status.HTTP_404_NOT_FOUND
-        case sch.ServiceStatus(status='previously_confirmed'):
+        case sch.OutputStatus(status='previously_confirmed'):
             log.warning(f'Email already confirmed: {email}')
             status_code = status.HTTP_409_CONFLICT
-        case sch.ServiceStatus(status='http_error'):
+        case sch.OutputStatus(status='http_error'):
             error_code = confirmation_status.details.error_code
             log.error(f'confirm-mail endpoint error: {error_code}')
             status_code = error_code or 500
@@ -157,19 +150,19 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
     """
     match confirmation_status:
         case (
-            sch.ServiceStatus(status='invalid_token') |
-            sch.ServiceStatus(status='expired_token')
+            sch.OutputStatus(status='invalid_token') |
+            sch.OutputStatus(status='expired_token')
         ):
             log.error(f'Invalid token: {token}')
             message = error_msg_template.format(
                 error_msg='The confirmation link is corrupted or expired.'
             )
-        case sch.ServiceStatus(status='inexistent_token'):
+        case sch.OutputStatus(status='inexistent_token'):
             log.error(f'Inexistent token: {token}')
             message = error_msg_template.format(
                 error_msg='There is no sign up corresponding to the confirmation link.'
             )
-        case sch.ServiceStatus(status='previously_confirmed'):
+        case sch.OutputStatus(status='previously_confirmed'):
             log.warning(f'Email already confirmed: {email}')
             message = f""" Your email address was confirmed previously. </br>
             You can just log in on:</br>
@@ -178,7 +171,7 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
                 </div>
             to access our platform.
             """
-        case sch.ServiceStatus(status='http_error'):
+        case sch.OutputStatus(status='http_error'):
             error_code = confirmation_status.details.error_code
             log.error(f'confirm-mail endpoint error: {error_code}')
             message = error_msg_template.format(
@@ -222,25 +215,6 @@ def load_recipes(
     recipes_csv: UploadFile
 ) -> JSONResponse:
     """Load a .csv file with recipes content to the `recipe` database."""
-    # ----------------------------------------------------------------------------------------------
-    #   Output status
-    # ----------------------------------------------------------------------------------------------
-    recipes_loaded_status = sch.ServiceStatus(
-        status='recipes_loaded',
-        error=False,
-        details=sch.StatusDetails(
-            description='Recipes loaded successfully.'
-        ),
-    )
-
-    error_loading_recipe_status = sch.ServiceStatus(
-        status='error_loading_recipes',
-        error=True,
-        details=sch.StatusDetails(
-            description='An error ocurred trying to load the recipes.'
-        ),
-    )
-    # ----------------------------------------------------------------------------------------------
     token_status = srv.handle_token(token=token)
     if token_status.status in ('invalid_token', 'expired_token'):
         return JSONResponse(
@@ -261,8 +235,8 @@ def load_recipes(
 
     match csv_import_status:
         case (
-                sch.ServiceStatus(status='invalid_csv_format') |
-                sch.ServiceStatus(status='invalid_csv_content')
+                sch.OutputStatus(status='invalid_csv_format') |
+                sch.OutputStatus(status='invalid_csv_content')
             ):
             log.error(csv_import_status.details.description)
             output_status = csv_import_status
@@ -274,36 +248,17 @@ def load_recipes(
                 if store_recipe_status.status == 'error_storing_recipe':
                     recipes_errors[recipe.id] = store_recipe_status.details.data
             if recipes_errors:
-                error_loading_recipe_status.details.data = recipes_errors
-                output_status = error_loading_recipe_status
+                output_status = ost.api_error_loading_recipe_status()
+                output_status.details.data = recipes_errors
                 status_code = status.HTTP_400_BAD_REQUEST
             else:
-                output_status = recipes_loaded_status
+                output_status = ost.api_recipes_loaded_status()
                 status_code = status.HTTP_201_CREATED
     return JSONResponse(content=output_status.model_dump(), status_code=status_code)
 
 @app.get('/get-all-recipes')
 def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONResponse:
     """Return all recipes with basic information and status regarding the user."""
-    # ----------------------------------------------------------------------------------------------
-    #   Output status
-    # ----------------------------------------------------------------------------------------------
-    all_recipes_status = sch.ServiceStatus(
-        status='all_recipes_retrieved',
-        error=False,
-        details=sch.StatusDetails(
-            description='All recipes retrieved successfully.'
-        ),
-    )
-
-    error_getting_all_recipe_status = sch.ServiceStatus(
-        status='error_getting_all_recipes',
-        error=True,
-        details=sch.StatusDetails(
-            description='An error ocurred trying to get all recipes.'
-        ),
-    )
-    # ----------------------------------------------------------------------------------------------
     token_status = srv.handle_token(token=token)
     if token_status.status in ('invalid_token', 'expired_token'):
         return JSONResponse(
@@ -316,16 +271,16 @@ def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONRespon
 
     if all_recipes_service_status.error:
         status_code = status.HTTP_400_BAD_REQUEST
-        output_status = error_getting_all_recipe_status
+        output_status = ost.api_error_getting_all_recipes_status()
         output_status.details.data = all_recipes_service_status.details.data
     elif user_recipes_service_status.error:
         status_code = status.HTTP_400_BAD_REQUEST
-        output_status = error_getting_all_recipe_status
+        output_status = ost.api_error_getting_all_recipes_status()
         output_status.details.data = user_recipes_service_status.details.data
     else:
         all_recipes = all_recipes_service_status.details.data['all_recipes']
         user_recipes = user_recipes_service_status.details.data['user_recipes']
-        user_mapping = {
+        user_recipe_status_mapping = {
             recipe.recipe_id: sch.RecipeStatus(value=recipe.status)
             for recipe in user_recipes
         }
@@ -333,14 +288,61 @@ def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONRespon
         resulting_recipes = []
         for recipe in all_recipes:
             exclude_fields = {'recipe'}
-            if recipe.id in user_mapping:
+            if recipe.id in user_recipe_status_mapping:
                 exclude_fields.add('price')
-                recipe.status = user_mapping[recipe.id]
+                recipe.status = user_recipe_status_mapping[recipe.id]
             resulting_recipes.append(recipe.to_json(exclude=exclude_fields))
 
         status_code = status.HTTP_200_OK
-        output_status = all_recipes_status
+        output_status = ost.api_all_recipes_status()
         output_status.details.data = {'all_recipes': resulting_recipes}
+
+    return JSONResponse(content=output_status.model_dump(), status_code=status_code)
+
+@app.get('/get-recipe-details/{recipe_id}')
+def get_recipe_details(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    recipe_id: str,
+) -> JSONResponse:
+    """Return specific recipe with information and status regarding the user."""
+    token_status = srv.handle_token(token=token)
+    if token_status.status in ('invalid_token', 'expired_token'):
+        return JSONResponse(
+            content=token_status.model_dump(),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    user_id = token_status.details.data.get('sub', '')
+
+    recipe_service_status = srv.get_specific_recipe(recipe_id=recipe_id)
+    user_recipes_service_status = srv.get_user_recipes(user_id=user_id)
+
+    if recipe_service_status.error:
+        status_code = status.HTTP_400_BAD_REQUEST
+        output_status = ost.api_error_getting_recipe_details_status()
+        output_status.details.data = recipe_service_status.details.data
+    elif user_recipes_service_status.error:
+        status_code = status.HTTP_400_BAD_REQUEST
+        output_status = ost.api_error_getting_recipe_details_status()
+        output_status.details.data = user_recipes_service_status.details.data
+    else:
+        specific_recipe = recipe_service_status.details.data['recipe']
+        user_recipes = user_recipes_service_status.details.data['user_recipes']
+        user_recipe_status_mapping = {
+            recipe.recipe_id: sch.RecipeStatus(value=recipe.status)
+            for recipe in user_recipes
+        }
+
+        exclude_fields = set()
+        if specific_recipe.id in user_recipe_status_mapping:
+            exclude_fields.add('price')
+            specific_recipe.status = user_recipe_status_mapping[specific_recipe.id]
+            if specific_recipe.status == 'requested':
+                exclude_fields.add('recipe')
+        resulting_recipe = specific_recipe.to_json(exclude=exclude_fields)
+
+        status_code = status.HTTP_200_OK
+        output_status = ost.api_recipe_details_status()
+        output_status.details.data = {'recipe': resulting_recipe}
 
     return JSONResponse(content=output_status.model_dump(), status_code=status_code)
 

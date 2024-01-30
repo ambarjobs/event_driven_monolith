@@ -16,7 +16,7 @@ from pydantic import JsonValue, ValidationError
 import config
 import pubsub as ps
 import schemas as sch
-import services_status as sst
+import output_status as ost
 import utils
 from database import db
 from exceptions import InvalidCsvFormatError
@@ -42,18 +42,18 @@ def user_is_logged_in(db_user_credentials: JsonValue) -> bool:
         timedelta(hours=config.TOKEN_DEFAULT_EXPIRATION_HOURS)
     )
 
-def handle_token(token: str) -> sch.ServiceStatus:
+def handle_token(token: str) -> sch.OutputStatus:
     try:
         payload = utils.get_token_payload(token=token)
-        content_data = sst.ok_status()
+        content_data = ost.ok_status()
         content_data.details.data = payload
     except (ExpiredSignatureError, JWTError) as err:
         match err:
             case ExpiredSignatureError():
-                content_data = sst.expired_token_status()
+                content_data = ost.expired_token_status()
                 content_data.details.description = f'The token has expired, log in again: {err}'
             case JWTError():
-                content_data = sst.invalid_token_status()
+                content_data = ost.invalid_token_status()
                 content_data.details.description = f'Invalid token: {err}'
     return content_data
 
@@ -75,7 +75,7 @@ def user_sign_up(
     credentials: sch.UserCredentials,
     user_info: sch.UserInfo,
     base_url: str,
-) -> sch.ServiceStatus:
+) -> sch.OutputStatus:
     """User sign up service."""
     try:
         version = db.check_document_available(
@@ -106,18 +106,18 @@ def user_sign_up(
             ).model_dump_json()
             sign_up_producer.publish(topic='user-signed-up', message=message)
 
-            return sst.successful_sign_up_status()
+            return ost.successful_sign_up_status()
 
-        output_status = sst.user_already_signed_up_status()
+        output_status = ost.user_already_signed_up_status()
         output_status.details.data = {'version': version}
         return output_status
     except httpx.HTTPStatusError as err:
-        return sst.http_error_status(error=err)
+        return ost.http_error_status(error=err)
 
 # --------------------------------------------------------------------------------------------------
 #   Login
 # --------------------------------------------------------------------------------------------------
-def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
+def authentication(credentials: sch.UserCredentials) -> sch.OutputStatus:
     """User login service."""
     try:
         db_user_credentials = db.get_document_by_id(
@@ -127,22 +127,22 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
     except httpx.HTTPStatusError as err:
         if err.response.status_code == status.HTTP_404_NOT_FOUND:
             # User not found
-            return sst.incorrect_login_status()
-        return sst.http_error_status(error=err)
+            return ost.incorrect_login_status()
+        return ost.http_error_status(error=err)
 
     user_hash = utils.deep_traversal(db_user_credentials, 'hash')
     if user_hash is None:
         # User has no hash.
-        return sst.incorrect_login_status()
+        return ost.incorrect_login_status()
 
     hash_match = utils.check_password(password=credentials.password, hash_value=user_hash)
     if not hash_match:
         # Invalid password.
-        return sst.incorrect_login_status()
+        return ost.incorrect_login_status()
 
     validated  = utils.deep_traversal(db_user_credentials, 'validated')
     if not validated:
-        return sst.email_not_validated_status()
+        return ost.email_not_validated_status()
 
     db.upsert_document(
         database_name=config.USER_CREDENTIALS_DB_NAME,
@@ -150,16 +150,16 @@ def authentication(credentials: sch.UserCredentials) -> sch.ServiceStatus:
         fields={'last_login': datetime.now(tz=UTC).isoformat()}
     )
 
-    payload = {'sub': credentials.id}
+    payload: JsonValue = {'sub': credentials.id}
     access_token = utils.create_token(payload=payload)
 
     logged_in = user_is_logged_in(db_user_credentials=db_user_credentials)
     if logged_in:
-        output_status = sst.user_already_logged_in_status()
+        output_status = ost.user_already_logged_in_status()
         output_status.details.data = {'new_token': access_token}
         return output_status
 
-    output_status = sst.successful_logged_in_status()
+    output_status = ost.successful_logged_in_status()
     output_status.details.data = {'token': access_token}
     return output_status
 
@@ -208,7 +208,7 @@ def email_confirmation(
         # Acknowledging the message.
         channel.basic_ack(delivery_tag=method.delivery_tag)
 
-def check_email_confirmation(token: str) -> sch.ServiceStatus:
+def check_email_confirmation(token: str) -> sch.OutputStatus:
     """Checks the status corresponding to passed email confirmation token and database state."""
     try:
         try:
@@ -225,17 +225,17 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
             #     properties=None,
             #     body=user_info.model_dump()
             # )
-            output_status = sst.expired_token_status()
+            output_status = ost.expired_token_status()
             output_status.details.data = {'token': token}
             return output_status
         except JWTError as err:
-            output_status = sst.invalid_token_status()
+            output_status = ost.invalid_token_status()
             output_status.details.data = {'errors': str(err), 'token': token}
             return output_status
         try:
             email_confirmation_info = sch.EmailConfirmationInfo.model_validate(token_payload)
         except ValidationError as err:
-            output_status = sst.invalid_token_status()
+            output_status = ost.invalid_token_status()
             output_status.details.data = {'errors': err.errors(), 'token': token}
             return output_status
         user_confirmation = db.get_document_by_fields(
@@ -244,7 +244,7 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
             additional_fields=['confirmed_datetime']
         )
         if not user_confirmation:
-            output_status = sst.inexistent_token_status()
+            output_status = ost.inexistent_token_status()
             output_status.details.data = {
                 'token': token,
                 'email': email_confirmation_info.user_id
@@ -252,7 +252,7 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
             return output_status
         confirmed_datetime = utils.deep_traversal(user_confirmation, 'confirmed_datetime')
         if confirmed_datetime:
-            output_status = sst.previously_confirmed_status()
+            output_status = ost.previously_confirmed_status()
             output_status.details.data = {
                 'confirmation_datetime': confirmed_datetime,
                 'email': email_confirmation_info.user_id
@@ -269,11 +269,11 @@ def check_email_confirmation(token: str) -> sch.ServiceStatus:
 
         email_confirmed_producer = ps.PubSub()
         email_confirmed_producer.publish(topic='email-confirmed', message=email_confirmation_info.user_id)
-        output_status = sst.confirmed_status()
+        output_status = ost.confirmed_status()
         output_status.details.data = {'email': email_confirmation_info.user_id, 'name': email_confirmation_info.user_name}
         return output_status
     except httpx.HTTPStatusError as err:
-        return sst.http_error_status(error=err)
+        return ost.http_error_status(error=err)
 
 def enable_user(
     channel: BlockingChannel,
@@ -325,7 +325,7 @@ def parse_recipe_data(csv_data: dict[str, Any]) -> sch.Recipe:
         'directions'
     ]
 
-    if None in csv_data.values() or (set(csv_data.keys()) < set(required_fields)):
+    if None in csv_data.values() or (set(csv_data) < set(required_fields)):
         raise InvalidCsvFormatError
 
     description = '\n'.join(
@@ -353,7 +353,7 @@ def parse_recipe_data(csv_data: dict[str, Any]) -> sch.Recipe:
     )
     return parsed_recipe
 
-def import_csv_recipes(csv_file: BinaryIO) -> sch.ServiceStatus:
+def import_csv_recipes(csv_file: BinaryIO) -> sch.OutputStatus:
     """Read a .csv file and return a list of schema objects representing the recipes."""
     csv_text_file = io.TextIOWrapper(csv_file, encoding=config.APP_ENCODING_FORMAT)
     recipe_reader = csv.DictReader(
@@ -373,16 +373,16 @@ def import_csv_recipes(csv_file: BinaryIO) -> sch.ServiceStatus:
     try:
         recipes_data = [parse_recipe_data(recipe) for recipe in recipe_reader]
     except InvalidCsvFormatError:
-        return sst.invalid_csv_format_status()
+        return ost.invalid_csv_format_status()
     except ValidationError as err:
-        output_status = sst.invalid_csv_content_status()
+        output_status = ost.invalid_csv_content_status()
         output_status.details.data = {'errors': err.errors()}
         return output_status
-    output_status = sst.imported_csv_status()
+    output_status = ost.imported_csv_status()
     output_status.details.data = {'recipes': recipes_data}
     return output_status
 
-def store_recipe(recipe: sch.Recipe) -> sch.ServiceStatus:
+def store_recipe(recipe: sch.Recipe) -> sch.OutputStatus:
     """Stores the recipe on database."""
     db_recipe = recipe.to_json()
     recipe_id = db_recipe.pop('id')
@@ -392,14 +392,14 @@ def store_recipe(recipe: sch.Recipe) -> sch.ServiceStatus:
             document_id=recipe_id,
             fields=db_recipe
         )
-        return sst.recipe_stored_status()
+        return ost.recipe_stored_status()
     except httpx.HTTPStatusError as err:
-        error_status = sst.http_error_status(error=err)
+        error_status = ost.http_error_status(error=err)
         error_status.status = 'error_storing_recipe'
         error_status.details.description = 'An error ocurred trying to store the recipe.'
         return error_status
 
-def get_all_recipes() -> sch.ServiceStatus:
+def get_all_recipes() -> sch.OutputStatus:
     """Return all recipes on `recipe` database."""
     recipes_fields = [field for field in sch.Recipe.model_fields if field != 'recipe']
     try:
@@ -407,19 +407,20 @@ def get_all_recipes() -> sch.ServiceStatus:
             database_name=config.RECIPES_DB_NAME,
             fields=recipes_fields,
         )
-        output_status = sst.all_recipes_status()
+        output_status = ost.all_recipes_status()
         output_status.details.data = {
             'all_recipes': [sch.Recipe.from_record(record=db_recipe)
             for db_recipe in db_all_recipes]
         }
         return output_status
     except httpx.HTTPStatusError as err:
-        error_status = sst.http_error_status(error=err)
-        error_status.status = 'error_retrieving_all_recipes'
-        error_status.details.description = 'An error ocurred trying to retrieve all recipes.'
+        service_status = ost.error_retrieving_all_recipes_status()
+        error_status = ost.http_error_status(error=err)
+        error_status.status = service_status.status
+        error_status.details.description = service_status.details.description
         return error_status
 
-def get_user_recipes(user_id: str) -> sch.ServiceStatus:
+def get_user_recipes(user_id: str) -> sch.OutputStatus:
     """Return user recipes on `user-recipe` database."""
     try:
         db_user_recipes = db.get_document_by_id(
@@ -427,13 +428,31 @@ def get_user_recipes(user_id: str) -> sch.ServiceStatus:
             document_id=user_id
         )
         user_recipes = utils.deep_traversal(db_user_recipes, 'recipes')
-        output_status = sst.user_recipes_status()
+        output_status = ost.user_recipes_status()
         output_status.details.data = {
             'user_recipes': [sch.UserRecipe(**recipe) for recipe in user_recipes]
         }
         return output_status
     except httpx.HTTPStatusError as err:
-        error_status = sst.http_error_status(error=err)
-        error_status.status = 'error_retrieving_user_recipes'
-        error_status.details.description = 'An error ocurred trying to retrieve user recipes.'
+        service_status = ost.error_retrieving_user_recipes_status()
+        error_status = ost.http_error_status(error=err)
+        error_status.status = service_status.status
+        error_status.details.description = service_status.details.description
+        return error_status
+
+def get_specific_recipe(recipe_id: str) -> sch.OutputStatus:
+    """Return an specific recipe from `recipe` database."""
+    try:
+        db_recipe = db.get_document_by_id(
+            database_name=config.RECIPES_DB_NAME,
+            document_id=recipe_id,
+        )
+        output_status = ost.specific_recipe_status()
+        output_status.details.data = {'recipe': sch.Recipe.from_record(record=db_recipe)}
+        return output_status
+    except httpx.HTTPStatusError as err:
+        service_status = ost.error_retrieving_specific_recipe_status()
+        error_status = ost.http_error_status(error=err)
+        error_status.status = service_status.status
+        error_status.details.description = service_status.details.description
         return error_status

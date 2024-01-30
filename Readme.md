@@ -1,6 +1,6 @@
-# Event Driven Monolith PoC
+# Event-Driven Monolith PoC
 
-This project is a proof of concept (PoC) to study the viability, strengths, weaknesses and challenges of using an event driven architecture based on publish-subscribe pattern, but using a `monolith` instead of `microservices`.
+This project is a proof of concept (PoC) to study the viability, strengths, weaknesses and challenges of using an event-driven, services oriented architecture based on publish-subscribe pattern, but using a `monolith` instead of `microservices`.
 
 ## Motivation
 
@@ -83,7 +83,7 @@ Below there are the main parts of the project with indication of what has been i
     [x] Login
     [x] Email confirmation
     [x] Recipes importing
-    [ ] Basic platform operation
+    [x] Basic platform operation
     [ ] Basic purchase mechanism
     [ ] Payment provider simulator
     [ ] User purchase notifications

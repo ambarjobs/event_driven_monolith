@@ -190,7 +190,7 @@ class TestDatabase:
                 raise ValueError
             db_index_fields = [
                 key for field_dict in utils.deep_traversal(index, 'def', 'fields')
-                for key in field_dict.keys()
+                for key in field_dict
             ]
             for field in db_index_fields:
                 assert field in index_fields
@@ -316,7 +316,7 @@ class TestDatabase:
         document_info = db.get_document_fields_by_id(
             database_name=database_name,
             document_id=document_id,
-            fields=['_id', *body.keys()],
+            fields=['_id', *body],
         )
 
         assert document_info
@@ -418,7 +418,7 @@ class TestDatabase:
         document_info = db.get_document_fields_by_id(
             database_name=database_name,
             document_id=document_id,
-            fields=['_id', *body.keys()],
+            fields=['_id', *body],
         )
 
         assert document_info == {}

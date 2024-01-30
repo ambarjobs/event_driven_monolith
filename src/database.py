@@ -167,7 +167,7 @@ class CouchDb:
     ) -> dict[str, Any]:
         """Get information about a document selecting it by it's `fields`."""
         fields_dict = fields_dict or {}
-        fields = list(fields_dict.keys()) + (additional_fields or [])
+        fields = list(fields_dict) + (additional_fields or [])
         body: dict = {
             "selector": fields_dict
         }

@@ -36,7 +36,7 @@ MEDIUM_LIST_ITEMS_LIMIT = 20
 
 
 # --------------------------------------------------------------------------------------------------
-#   Service status
+#   Output status
 # --------------------------------------------------------------------------------------------------
 class StatusDetails(BaseModel):
     """Service status details schema."""
@@ -45,8 +45,8 @@ class StatusDetails(BaseModel):
     error_code: int | None = None
 
 
-class ServiceStatus(BaseModel):
-    """Normalized service status schema."""
+class OutputStatus(BaseModel):
+    """Normalized output status schema."""
     status: str
     error: bool = Field(default=False)
     details: StatusDetails

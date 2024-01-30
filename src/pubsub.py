@@ -75,7 +75,7 @@ class PubSub:
     def _create_topic(self, topic: str) -> None:
         """Create a topic if it don't exists."""
         self.channel.exchange_declare(exchange=topic, exchange_type=self.exchange_type)
-        if not self.channel._delivery_confirmation:  # type: ignore
+        if not self.channel._delivery_confirmation: # type: ignore[attr-defined]
             self.channel.confirm_delivery()
 
     def _create_temporary_queue(self) -> str:

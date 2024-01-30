@@ -2,6 +2,7 @@
 #  Main module tests
 # ==================================================================================================
 import io
+from copy import deepcopy
 from datetime import datetime, timedelta, UTC
 from unittest import mock
 
@@ -173,7 +174,7 @@ class TestMain:
         response = client.post(url='/login', data=login_body)
         assert response.status_code == status.HTTP_200_OK
 
-        login_status = sch.ServiceStatus(**response.json())
+        login_status = sch.OutputStatus(**response.json())
 
         assert login_status.status == 'successfully_logged_in'
         assert login_status.error is False
@@ -222,7 +223,7 @@ class TestMain:
         response = client.post('/login', data=login_body)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-        login_status = sch.ServiceStatus(**response.json())
+        login_status = sch.OutputStatus(**response.json())
 
         assert login_status.status == 'incorrect_login_credentials'
         assert login_status.error is True
@@ -259,7 +260,7 @@ class TestMain:
         response = client.post('/login', data=login_body)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-        login_status = sch.ServiceStatus(**response.json())
+        login_status = sch.OutputStatus(**response.json())
 
         assert login_status.status == 'incorrect_login_credentials'
         assert login_status.error is True
@@ -292,7 +293,7 @@ class TestMain:
         response = client.post('/login', data=login_body)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-        login_status = sch.ServiceStatus(**response.json())
+        login_status = sch.OutputStatus(**response.json())
 
         assert login_status.status == 'incorrect_login_credentials'
         assert login_status.error is True
@@ -328,7 +329,7 @@ class TestMain:
         response = client.post('/login', data=login_body)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-        login_status = sch.ServiceStatus(**response.json())
+        login_status = sch.OutputStatus(**response.json())
 
         assert login_status.status == 'email_not_validated'
         assert login_status.error is True
@@ -371,7 +372,7 @@ class TestMain:
         response = client.post('/login', data=login_body)
         assert response.status_code == status.HTTP_200_OK
 
-        login_status = sch.ServiceStatus(**response.json())
+        login_status = sch.OutputStatus(**response.json())
 
         assert login_status.status == 'user_already_logged_in'
         assert login_status.error is False
@@ -430,7 +431,7 @@ class TestMain:
         response = client.post('/login', data=login_body)
         assert response.status_code == status.HTTP_200_OK
 
-        login_status = sch.ServiceStatus(**response.json())
+        login_status = sch.OutputStatus(**response.json())
 
         assert login_status.status == 'successfully_logged_in'
         assert login_status.error is False
@@ -489,7 +490,7 @@ class TestMain:
             response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_200_OK
 
-        content = sch.ServiceStatus.model_validate_json(response.content)
+        content = sch.OutputStatus.model_validate_json(response.content)
         assert content.status == 'confirmed'
         assert content.error is False
         assert content.details.description == 'Email confirmed.'
@@ -514,7 +515,7 @@ class TestMain:
             response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-        content = sch.ServiceStatus.model_validate_json(response.content)
+        content = sch.OutputStatus.model_validate_json(response.content)
         assert content.status == 'invalid_token'
         assert content.error is True
         assert content.details.description == 'Invalid token.'
@@ -540,7 +541,7 @@ class TestMain:
             response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-        content = sch.ServiceStatus.model_validate_json(response.content)
+        content = sch.OutputStatus.model_validate_json(response.content)
         assert content.status == 'invalid_token'
         assert content.error is True
         assert content.details.description == 'Invalid token.'
@@ -574,7 +575,7 @@ class TestMain:
             response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-        content = sch.ServiceStatus.model_validate_json(response.content)
+        content = sch.OutputStatus.model_validate_json(response.content)
         assert content.status == 'inexistent_token'
         assert content.error is True
         assert content.details.description == 'Inexistent token for the user id.'
@@ -613,7 +614,7 @@ class TestMain:
             response = client.post(url='/confirm-email-api', json=token_data)
         assert response.status_code == status.HTTP_409_CONFLICT
 
-        content = sch.ServiceStatus.model_validate_json(response.content)
+        content = sch.OutputStatus.model_validate_json(response.content)
         assert content.status == 'previously_confirmed'
         assert content.error is True
         assert content.details.description == 'The email was already confirmed.'
@@ -805,7 +806,7 @@ class TestMain:
         assert response.status_code == status.HTTP_201_CREATED
 
         response_data = response.json()
-        assert utils.deep_traversal(response_data, 'status') == 'recipes_loaded'
+        assert utils.deep_traversal(response_data, 'status') == 'api_recipes_loaded'
         assert utils.deep_traversal(response_data, 'error') is False
         assert utils.deep_traversal(
             response_data,
@@ -926,7 +927,7 @@ class TestMain:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
         response_data = response.json()
-        assert utils.deep_traversal(response_data, 'status') == 'error_loading_recipes'
+        assert utils.deep_traversal(response_data, 'status') == 'api_error_loading_recipes'
         assert utils.deep_traversal(response_data, 'error') is True
         assert utils.deep_traversal(
             response_data,
@@ -940,7 +941,7 @@ class TestMain:
     # ==============================================================================================
     #   /get-all-recipes endpoint test
     # ==============================================================================================
-    def test_get_all_recipes_endpoint__general_case(
+    def recipe_databases_setup(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -949,9 +950,6 @@ class TestMain:
         one_more_recipe: sch.Recipe,
         user_credentials: sch.UserCredentials,
     ) -> None:
-        # ----------------------------------------------------------------------
-        #   Databases setup
-        # ----------------------------------------------------------------------
         recipes_db = test_db
         recipes_db.database_name = config.RECIPES_DB_NAME
 
@@ -964,27 +962,44 @@ class TestMain:
         user_recipes_db.create()
         user_recipes_db.add_permissions()
 
-        all_recipes = (recipe, another_recipe, one_more_recipe)
-        for all_recipes_item in all_recipes:
+        self.all_recipes = (recipe, another_recipe, one_more_recipe)
+        for all_recipes_item in self.all_recipes:
             srv.store_recipe(recipe=all_recipes_item)
 
-        another_recipe.status = sch.RecipeStatus.purchased
-        one_more_recipe.status = sch.RecipeStatus.requested
+        self.available_user_recipe = deepcopy(recipe)
+        self.purchased_user_recipe = deepcopy(another_recipe)
+        self.purchased_user_recipe.status = sch.RecipeStatus.purchased
+        self.requested_user_recipe = deepcopy(one_more_recipe)
+        self.requested_user_recipe.status = sch.RecipeStatus.requested
 
-        user_recipes = (another_recipe, one_more_recipe)
-        for user_recipes_item in user_recipes:
-            del(user_recipes_item.price)
-            del(user_recipes_item.recipe)
-        user_recipes_mapping = {recipe.id: recipe.to_json() for recipe in user_recipes}
+        self.user_recipes = (self.purchased_user_recipe, self.requested_user_recipe)
+        self.user_recipes_mapping = {recipe.id: recipe.to_json(exclude={'price', 'recipe'}) for recipe in self.user_recipes}
 
         user_recipes_data = {
             'recipes': [
                 {'recipe_id': recipe.id, 'status': recipe.status}
-                for recipe in user_recipes
+                for recipe in self.user_recipes
             ]
         }
         user_recipes_db.create_document(document_id=user_credentials.id, body=user_recipes_data)
-        # ----------------------------------------------------------------------
+
+    def test_get_all_recipes_endpoint__general_case(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        self.recipe_databases_setup(
+            test_db=test_db,
+            another_test_db=another_test_db,
+            recipe=recipe,
+            another_recipe=another_recipe,
+            one_more_recipe=one_more_recipe,
+            user_credentials=user_credentials,
+        )
 
         payload = {'sub': user_credentials.id}
         token = utils.create_token(payload=payload)
@@ -997,7 +1012,7 @@ class TestMain:
         assert response.status_code == status.HTTP_200_OK
 
         all_recipe_status = response.json()
-        assert utils.deep_traversal(all_recipe_status, 'status') == 'all_recipes_retrieved'
+        assert utils.deep_traversal(all_recipe_status, 'status') == 'api_all_recipes_retrieved'
         assert utils.deep_traversal(all_recipe_status, 'error') is False
         assert utils.deep_traversal(
             all_recipe_status,
@@ -1008,11 +1023,11 @@ class TestMain:
         api_recipes = utils.deep_traversal(all_recipe_status, 'details', 'data', 'all_recipes')
         api_recipes_mapping = {recipe['id']: recipe for recipe in api_recipes}
 
-        assert len(api_recipes) == len(all_recipes)
+        assert len(api_recipes) == len(self.all_recipes)
         for api_recipe in api_recipes:
             api_recipe_id = api_recipe['id']
-            if api_recipe_id in user_recipes_mapping:
-                assert api_recipe == user_recipes_mapping[api_recipe_id]
+            if api_recipe_id in self.user_recipes_mapping:
+                assert api_recipe == self.user_recipes_mapping[api_recipe_id]
             else:
                 assert api_recipe == api_recipes_mapping[api_recipe_id]
 
@@ -1020,9 +1035,6 @@ class TestMain:
         self,
         test_db: Db,
         another_test_db: Db,
-        recipe: sch.Recipe,
-        another_recipe: sch.Recipe,
-        one_more_recipe: sch.Recipe,
         user_credentials: sch.UserCredentials,
         invalid_db_credentials: DbCredentials,
     ) -> None:
@@ -1058,7 +1070,7 @@ class TestMain:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
         all_recipe_status = response.json()
-        assert utils.deep_traversal(all_recipe_status, 'status') == 'error_getting_all_recipes'
+        assert utils.deep_traversal(all_recipe_status, 'status') == 'api_error_getting_all_recipes'
         assert utils.deep_traversal(all_recipe_status, 'error') is True
         assert utils.deep_traversal(
             all_recipe_status,
@@ -1099,6 +1111,245 @@ class TestMain:
 
         response = client.get(
             url='/get-all-recipes',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'expired_token'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'The token has expired, log in again: Signature has expired.'
+
+    # ==============================================================================================
+    #   /get-recipe-details endpoint test
+    # ==============================================================================================
+    def test_get_recipe_details_endpoint__general_case__available_recipe(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        self.recipe_databases_setup(
+            test_db=test_db,
+            another_test_db=another_test_db,
+            recipe=recipe,
+            another_recipe=another_recipe,
+            one_more_recipe=one_more_recipe,
+            user_credentials=user_credentials,
+        )
+
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        response = client.get(
+            url=f'/get-recipe-details/{self.available_user_recipe.id}',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+        recipe_details_status = response.json()
+        assert (
+            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe-details_retrieved'
+        )
+        assert utils.deep_traversal(recipe_details_status, 'error') is False
+        assert utils.deep_traversal(
+            recipe_details_status,
+            'details',
+            'description'
+        ) == 'Recipe details retrieved successfully.'
+
+        api_recipe = utils.deep_traversal(recipe_details_status, 'details', 'data', 'recipe')
+
+        assert 'recipe' in api_recipe
+        assert 'price' in api_recipe
+        assert api_recipe == recipe.to_json()
+
+    def test_get_recipe_details_endpoint__general_case__purchased_recipe(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        self.recipe_databases_setup(
+            test_db=test_db,
+            another_test_db=another_test_db,
+            recipe=recipe,
+            another_recipe=another_recipe,
+            one_more_recipe=one_more_recipe,
+            user_credentials=user_credentials,
+        )
+
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        response = client.get(
+            url=f'/get-recipe-details/{self.purchased_user_recipe.id}',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+        recipe_details_status = response.json()
+        assert (
+            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe-details_retrieved'
+        )
+        assert utils.deep_traversal(recipe_details_status, 'error') is False
+        assert utils.deep_traversal(
+            recipe_details_status,
+            'details',
+            'description'
+        ) == 'Recipe details retrieved successfully.'
+
+        expected_recipe = deepcopy(self.purchased_user_recipe)
+        expected_recipe.status = 'purchased'
+        del(expected_recipe.price)
+
+        api_recipe = utils.deep_traversal(recipe_details_status, 'details', 'data', 'recipe')
+
+        assert api_recipe == expected_recipe.to_json()
+
+    def test_get_recipe_details_endpoint__general_case__requested_recipe(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        self.recipe_databases_setup(
+            test_db=test_db,
+            another_test_db=another_test_db,
+            recipe=recipe,
+            another_recipe=another_recipe,
+            one_more_recipe=one_more_recipe,
+            user_credentials=user_credentials,
+        )
+
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        response = client.get(
+            url=f'/get-recipe-details/{self.requested_user_recipe.id}',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+        recipe_details_status = response.json()
+        assert (
+            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe-details_retrieved'
+        )
+        assert utils.deep_traversal(recipe_details_status, 'error') is False
+        assert utils.deep_traversal(
+            recipe_details_status,
+            'details',
+            'description'
+        ) == 'Recipe details retrieved successfully.'
+
+        expected_recipe = deepcopy(self.requested_user_recipe)
+        expected_recipe.status = 'requested'
+        del(expected_recipe.recipe)
+        del(expected_recipe.price)
+
+        api_recipe = utils.deep_traversal(recipe_details_status, 'details', 'data', 'recipe')
+
+        assert api_recipe == expected_recipe.to_json()
+
+    def test_get_recipe_details_endpoint__recipe_reading_error(
+        self,
+        test_db: Db,
+        another_test_db: Db,
+        recipe: sch.Recipe,
+        user_credentials: sch.UserCredentials,
+        invalid_db_credentials: DbCredentials,
+    ) -> None:
+        # ----------------------------------------------------------------------
+        #   Databases setup
+        # ----------------------------------------------------------------------
+        recipes_db = test_db
+        recipes_db.database_name = config.RECIPES_DB_NAME
+
+        user_recipes_db = another_test_db
+        user_recipes_db.database_name = config.USER_RECIPES_DB_NAME
+
+        recipes_db.create()
+        recipes_db.add_permissions()
+
+        user_recipes_db.create()
+        user_recipes_db.add_permissions()
+        # ----------------------------------------------------------------------
+
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        with mock.patch.object(
+            target=srv.db,
+            attribute='app_credentials',
+            new=invalid_db_credentials,
+        ):
+            response = client.get(
+                url=f'/get-recipe-details/{recipe.id}',
+                headers={'Authorization': f'Bearer {token}'}
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        all_recipe_status = response.json()
+        assert (
+            utils.deep_traversal(all_recipe_status, 'status') == 'api_error_getting_recipe_details'
+            )
+        assert utils.deep_traversal(all_recipe_status, 'error') is True
+        assert utils.deep_traversal(
+            all_recipe_status,
+            'details',
+            'description'
+        ) == 'An error ocurred trying to get recipe details.'
+
+
+    def test_get_recipe_details_endpoint__invalid_token(
+        self,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+        invalid_token = token[:-1]
+
+        response = client.get(
+            url='/get-recipe-details/some-recipe',
+            headers={'Authorization': f'Bearer {invalid_token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'invalid_token'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'Invalid token: Signature verification failed.'
+
+    def test_get_recipe_details_endpoint__expired_token(
+        self,
+        user_credentials: sch.UserCredentials,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload, expiration_hours=-1.0)
+
+        response = client.get(
+            url='/get-recipe-details/some-recipe',
             headers={'Authorization': f'Bearer {token}'}
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST

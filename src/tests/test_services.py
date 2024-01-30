@@ -65,7 +65,7 @@ class TestServices:
                 message=expected_event_message,
             )
 
-            expected_status = sch.ServiceStatus(
+            expected_status = sch.OutputStatus(
                 status='successful_sign_up',
                 error=False,
                 details = sch.StatusDetails(description='User signed up successfully.')
@@ -124,7 +124,7 @@ class TestServices:
             credentials_doc = credentials_db.get_document_by_id(
                 document_id=user_credentials.id,
             )
-            expected_status = sch.ServiceStatus(
+            expected_status = sch.OutputStatus(
                 status='user_already_signed_up',
                 error=True,
                 details = sch.StatusDetails(
@@ -946,7 +946,6 @@ class TestServices:
             'reason': 'Name or password is incorrect.'
         }
 
-
     # ==============================================================================================
     #   get_user_recipes service
     # ==============================================================================================
@@ -1024,6 +1023,77 @@ class TestServices:
             'An error ocurred trying to retrieve user recipes.'
         )
         assert user_recipes_status.details.data['errors'] == {
+            'error': 'unauthorized',
+            'reason': 'Name or password is incorrect.'
+        }
+
+    # ==============================================================================================
+    #   get_specific_recipe service
+    # ==============================================================================================
+    def test_get_specific_recipe__general_case(
+        self,
+        test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+    ) -> None:
+        recipe_db = test_db
+        recipe_db.database_name = config.RECIPES_DB_NAME
+
+        recipe_db.create()
+        recipe_db.add_permissions()
+
+        recipes = (recipe, another_recipe, one_more_recipe)
+        for recipe_ in recipes:
+            srv.store_recipe(recipe=recipe_)
+
+        specific_recipe_id = another_recipe.id
+
+        specific_recipe_status = srv.get_specific_recipe(recipe_id=specific_recipe_id)
+
+        assert specific_recipe_status.status == 'specific_recipe_retrieved'
+        assert specific_recipe_status.error is False
+        assert (
+            specific_recipe_status.details.description == 'Specific recipe retrieved successfully.'
+        )
+
+        specific_recipe = specific_recipe_status.details.data['recipe']
+
+        assert specific_recipe == another_recipe
+
+    def test_get_specific_recipe__database_error(
+        self,
+        test_db: Db,
+        recipe: sch.Recipe,
+        another_recipe: sch.Recipe,
+        one_more_recipe: sch.Recipe,
+        invalid_db_credentials: DbCredentials,
+    ) -> None:
+        recipe_db = test_db
+        recipe_db.database_name = config.RECIPES_DB_NAME
+
+        recipe_db.create()
+        recipe_db.add_permissions()
+
+        recipes = (recipe, another_recipe, one_more_recipe)
+        for recipe_ in recipes:
+            srv.store_recipe(recipe=recipe_)
+
+        with mock.patch.object(
+            target=srv.db,
+            attribute='app_credentials',
+            new=invalid_db_credentials,
+        ):
+            specific_recipe_id = another_recipe.id
+            specific_recipe_status = srv.get_specific_recipe(recipe_id=specific_recipe_id)
+
+        assert specific_recipe_status.status == 'error_retrieving_specific_recipe'
+        assert specific_recipe_status.error is True
+        assert (
+            specific_recipe_status.details.description ==
+            'An error ocurred trying to retrieve specific recipe.'
+        )
+        assert specific_recipe_status.details.data['errors'] == {
             'error': 'unauthorized',
             'reason': 'Name or password is incorrect.'
         }

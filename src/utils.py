@@ -63,7 +63,7 @@ def create_token(
     if not key:
         raise InvalidAccessTokenKeyError
     return jwt.encode(
-        claims=payload | {'exp': token_expiration},
+        claims=payload | {'exp': token_expiration}, # type: ignore[operator]
         key=key,
         algorithm=config.TOKEN_ALGORITHM
     )
