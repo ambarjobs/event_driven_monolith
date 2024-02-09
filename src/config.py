@@ -29,6 +29,15 @@ logging.basicConfig(format=LOGGING_FORMAT)
 
 
 # --------------------------------------------------------------------------------------------------
+#  RabbitMQ
+# --------------------------------------------------------------------------------------------------
+RABBIT_HOST = 'rabbitmq'
+RABBIT_PORT = 5672
+RABBIT_HEARTBEAT_TIMEOUT = 6 * 60
+RABBIT_BLOCKED_CONNECTION_TIMEOUT = 3 * 60
+
+
+# --------------------------------------------------------------------------------------------------
 #  Database
 # --------------------------------------------------------------------------------------------------
 db_protocol = 'http'
@@ -44,9 +53,11 @@ USER_INFO_DB_NAME = f'{DB_PREFIX}user-info'
 EMAIL_CONFIRMATION_DB_NAME = f'{DB_PREFIX}email-confirmation'
 RECIPES_DB_NAME = f'{DB_PREFIX}recipe'
 USER_RECIPES_DB_NAME = f'{DB_PREFIX}user-recipe'
+PAYMENT_DB_NAME = f'{DB_PREFIX}payment'
+
 
 # --------------------------------------------------------------------------------------------------
-#  Authentication
+#  Authentication functionality
 # --------------------------------------------------------------------------------------------------
 ACCESS_TOKEN_SECRET_KEY = os.environ.get('ACCESS_TOKEN_SECRET_KEY')
 TOKEN_ALGORITHM = 'HS256'
@@ -54,24 +65,22 @@ TOKEN_DEFAULT_EXPIRATION_HOURS = 24
 
 APP_ADM_USER = os.getenv('APP_ADM_USER')
 
-
-# --------------------------------------------------------------------------------------------------
-#  Email validation
-# --------------------------------------------------------------------------------------------------
 EMAIL_VALIDATION_TIMEOUT_HOURS = 24
 
 
 # --------------------------------------------------------------------------------------------------
-#  RabbitMQ
-# --------------------------------------------------------------------------------------------------
-RABBIT_HOST = 'rabbitmq'
-RABBIT_PORT = 5672
-RABBIT_HEARTBEAT_TIMEOUT = 6 * 60
-RABBIT_BLOCKED_CONNECTION_TIMEOUT = 3 * 60
-
-
-# --------------------------------------------------------------------------------------------------
-#  Recipes
+#  Recipes functionality
 # --------------------------------------------------------------------------------------------------
 CSV_FIELD_SEPARATOR = '\t'
 CSV_LIST_SEPARATOR = '|'
+
+
+# --------------------------------------------------------------------------------------------------
+#  Purchasing functionality
+# --------------------------------------------------------------------------------------------------
+PAYMENT_PROVIDER_API_KEY = os.environ.get('PAYMENT_PROVIDER_API_KEY', '')
+PAYMENT_PROVIDER_ENCRYPTION_KEY = os.environ.get(
+    'PAYMENT_PROVIDER_ENCRYPTION_KEY', ''
+).encode(APP_ENCODING_FORMAT)
+PAYMENT_PROVIDER_CHECKOUT_URL = 'http://localhost/create-checkout/'
+APP_WEBHOOK_URL = 'http://localhost/payment-webhook/'

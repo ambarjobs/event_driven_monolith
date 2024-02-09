@@ -355,3 +355,40 @@ def another_recipe(another_recipe_csv_data: dict[str, Any]) -> sch.Recipe:
 def one_more_recipe(one_more_recipe_csv_data: dict[str, Any]) -> sch.Recipe:
     """Return one more Recipe."""
     return csv_data_to_recipe(recipe_csv_data=one_more_recipe_csv_data)
+
+# --------------------------------------------------------------------------------------------------
+#   Purchasing
+# --------------------------------------------------------------------------------------------------
+@pytest.fixture
+def credit_card_number() -> str:
+    """Return a credit card number."""
+    # Test credit card number generated automatically here:
+    #   https://www.4devs.com.br/gerador_de_numero_cartao_credito
+    return '4539216056985199'
+
+@pytest.fixture
+def cc_payment_info(credit_card_number) -> sch.PaymentCcInfo:
+    """Return a credit card payment info structure."""
+    this_year = datetime.now(tz=UTC).year
+    return sch.PaymentCcInfo(
+        card_holder_name='Test User Name',
+        card_number=credit_card_number,
+        expiration_month=7,
+        expiration_year=this_year + 1,
+        cvv=567,
+    )
+
+@pytest.fixture
+def checkout_id() -> str:
+    """Return a payment provider's checkout id."""
+    return '1234567890-abcd'
+
+@pytest.fixture
+def payment_id() -> str:
+    """Return a payment id."""
+    return 'c722bb1a-c14c-48e0-a3a3-92c71e986acd'
+
+@pytest.fixture
+def payment_status() -> int:
+    """Return a payment status."""
+    return sch.PaymentStatus.PAID

@@ -3,6 +3,9 @@
 # ==================================================================================================
 import csv
 import io
+import random
+import time
+import uuid
 from datetime import datetime, timedelta, UTC
 from typing import Any, BinaryIO
 
@@ -18,15 +21,18 @@ import pubsub as ps
 import schemas as sch
 import output_status as ost
 import utils
+from config import logging as log
 from database import db
 from exceptions import InvalidCsvFormatError
 
+
+MIN_MINUTES_PROCESSING_PAYMENT = 1
+MAX_MINUTES_PROCESSING_PAYMENT = 5
 
 CONSUMERS_SUBSCRIPTIONS = (
     ps.Subscription(topic_name='user-signed-up', consumer_service_name='email_confirmation'),
     ps.Subscription(topic_name='email-confirmed', consumer_service_name='enable_user'),
 )
-
 
 # ==================================================================================================
 #   Generic functions
@@ -69,7 +75,7 @@ def stdout_message_delivery(message: str) -> None:
     print(f'\n>>>>> Sending:\n{message}\n', flush=True)
 
 # --------------------------------------------------------------------------------------------------
-#   Sign in
+#   Authentication functionality
 # --------------------------------------------------------------------------------------------------
 def user_sign_up(
     credentials: sch.UserCredentials,
@@ -114,9 +120,6 @@ def user_sign_up(
     except httpx.HTTPStatusError as err:
         return ost.http_error_status(error=err)
 
-# --------------------------------------------------------------------------------------------------
-#   Login
-# --------------------------------------------------------------------------------------------------
 def authentication(credentials: sch.UserCredentials) -> sch.OutputStatus:
     """User login service."""
     try:
@@ -164,7 +167,7 @@ def authentication(credentials: sch.UserCredentials) -> sch.OutputStatus:
     return output_status
 
 # --------------------------------------------------------------------------------------------------
-#   Email confirmation
+#   Email confirmation functionality
 # --------------------------------------------------------------------------------------------------
 def email_confirmation(
     channel: BlockingChannel,
@@ -296,7 +299,7 @@ def enable_user(
         channel.basic_ack(delivery_tag=method.delivery_tag)
 
 # --------------------------------------------------------------------------------------------------
-#   Recipes
+#   Recipes functionality
 # --------------------------------------------------------------------------------------------------
 def parse_recipe_data(csv_data: dict[str, Any]) -> sch.Recipe:
     """Parse a record of recipe read from .csv into a `Recipe` schema.
@@ -456,3 +459,128 @@ def get_specific_recipe(recipe_id: str) -> sch.OutputStatus:
         error_status.status = service_status.status
         error_status.details.description = service_status.details.description
         return error_status
+
+# --------------------------------------------------------------------------------------------------
+#   Purchasing functionality
+# --------------------------------------------------------------------------------------------------
+def start_checkout(user_id: str, recipe_id: str, payment_encr_info: bytes) -> sch.OutputStatus:
+    """Start the checkout process for purchasing a recipe."""
+    body = sch.PaymentCheckoutInfo(
+        payment_encr_info=sch.PaymentEncrInfo(encr_info=payment_encr_info),
+        api_key=config.PAYMENT_PROVIDER_API_KEY
+    ).model_dump()
+
+    try:
+        checkout_response = httpx.post(
+            url=f'{config.PAYMENT_PROVIDER_CHECKOUT_URL}{recipe_id}',
+            json=body,
+        ).raise_for_status()
+
+        checkout_response_json = checkout_response.json()
+        if utils.deep_traversal(checkout_response_json, 'error'):
+            return sch.OutputStatus(**checkout_response_json)
+    except httpx.HTTPStatusError as err:
+        return ost.http_error_status(error=err)
+
+    checkout_id = utils.deep_traversal(checkout_response_json, 'details', 'data', 'checkout_id')
+
+    if not checkout_id:
+        return ost.api_invalid_checkout_id_error_status()
+
+    db.upsert_document(
+        database_name=config.PAYMENT_DB_NAME,
+        document_id=checkout_id,
+        fields={'user_id': user_id}
+    )
+
+    recipe_purchase_producer = ps.PubSub()
+    message = sch.RecipePurchaseInfo(user_id=user_id, recipe_id=recipe_id).model_dump_json()
+    recipe_purchase_producer.publish(topic='recipe-purchase-requested', message=message)
+
+    return ost.start_checkout_status()
+
+def process_payment(
+    checkout_id: str,
+    webhook_payment_info: sch.WebhookPaymentInfo
+) -> sch.OutputStatus:
+    """Process payment provider's payment status notification."""
+    try:
+        checkout_db_data = db.get_document_by_id(
+            database_name=config.PAYMENT_DB_NAME,
+            document_id=checkout_id
+        )
+    except httpx.HTTPStatusError:
+        output_status = ost.process_payment_checkout_not_found_status()
+        log.error(msg=output_status.details.description)
+        return output_status
+
+    user_id = checkout_db_data['user_id']
+
+    db_fields = webhook_payment_info.model_dump()
+    db_fields['user_id'] = user_id
+
+    db.upsert_document(
+        database_name=config.PAYMENT_DB_NAME,
+        document_id=checkout_id,
+        fields=db_fields
+    )
+
+    process_payment_producer = ps.PubSub()
+    message = sch.PurchaseStatusInfo(
+        user_id=user_id,
+        recipe_id=webhook_payment_info.recipe_id,
+        payment_status=webhook_payment_info.payment_status,
+    ).model_dump_json()
+    process_payment_producer.publish(topic='purchase-status-changed', message=message)
+
+    log.info(
+        f'Payment status of [{webhook_payment_info.payment_id}] changed'
+        f' to {webhook_payment_info.payment_status}'
+    )
+
+    return ost.process_payment_status()
+
+# --------------------------------------------------------------------------------------------------
+#   Payment Provider Simulator
+# --------------------------------------------------------------------------------------------------
+def payment_processing(checkout_id: str, recipe_id: str) -> sch.OutputStatus:
+    """Notify application payment webhook of result of payment process."""
+    minutes_processing = random.randint(
+        MIN_MINUTES_PROCESSING_PAYMENT,
+        MAX_MINUTES_PROCESSING_PAYMENT
+    )
+    payment_id = str(uuid.uuid4())
+    payment_status = sch.PaymentStatus.PAID
+
+    # Simulating payment processing.
+    time.sleep(minutes_processing * 60)
+
+    webhook_payment_info = sch.WebhookPaymentInfo(
+        recipe_id=recipe_id,
+        payment_id=payment_id,
+        payment_status=payment_status,
+    )
+
+    try:
+        webhook_response = httpx.post(
+            url=f'{config.APP_WEBHOOK_URL}{checkout_id}',
+            json=webhook_payment_info.model_dump(),
+        ).raise_for_status()
+
+        webhook_response_json = webhook_response.json()
+        if utils.deep_traversal(webhook_response_json, 'error'):
+            output_status = ost.error_accessing_app_webhook_status()
+            output_status.details.data = utils.deep_traversal(
+                webhook_response_json,
+                'details',
+                'data'
+            ) or {}
+            output_status.details.error_code = utils.deep_traversal(
+                webhook_response_json,
+                'details',
+                'error_code'
+            )
+            return sch.OutputStatus(**output_status.model_dump())
+    except httpx.HTTPStatusError as err:
+        return ost.http_error_status(error=err)
+    return ost.payment_processing_status()

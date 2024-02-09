@@ -7,7 +7,6 @@ from typing import Any, NamedTuple
 
 import httpx
 from fastapi import status
-from pydantic import JsonValue
 
 import config
 import utils
@@ -162,8 +161,8 @@ class CouchDb:
     def get_document_by_fields(
         self,
         database_name: str,
-        fields_dict: JsonValue = None,
-        additional_fields: list[str] | None = None,
+        fields_dict: dict | None = None,
+        additional_fields: list | None = None,
     ) -> dict[str, Any]:
         """Get information about a document selecting it by it's `fields`."""
         fields_dict = fields_dict or {}

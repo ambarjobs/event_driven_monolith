@@ -245,6 +245,64 @@ def error_retrieving_specific_recipe_status() -> sch.OutputStatus:
         ),
     )
 
+# ----------------------------------------------------------------------------------------------
+#   `process_payment` output status
+# ----------------------------------------------------------------------------------------------
+def process_payment_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='specific_recipe_retrieved',
+        error=False,
+        details=sch.StatusDetails(
+            description='Specific recipe retrieved successfully.'
+        ),
+    )
+
+def process_payment_checkout_not_found_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='process_payment_checkout_not_found',
+        error=True,
+        details=sch.StatusDetails(
+            description='The `checkout_id` sent by payment provider was not found in database.'
+        ),
+    )
+
+# ==================================================================================================
+#  Payment provider simulator services output status
+# ==================================================================================================
+# ----------------------------------------------------------------------------------------------
+#   `start_checkout` output status
+# ----------------------------------------------------------------------------------------------
+def start_checkout_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='recipe_purchase_checkout_started',
+        error=False,
+        details=sch.StatusDetails(
+            description='Recipe purchase checkout started successfully.'
+        ),
+    )
+
+
+# ----------------------------------------------------------------------------------------------
+#   `payment_processing` output status
+# ----------------------------------------------------------------------------------------------
+def payment_processing_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='payment_status_notified',
+        error=False,
+        details=sch.StatusDetails(
+            description='The payment status change was notified to the application webhook.'
+        ),
+    )
+
+def error_accessing_app_webhook_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='error_accessing_app_webhook',
+        error=True,
+        details=sch.StatusDetails(
+            description='Error trying to access application webhook.'
+        ),
+    )
+
 
 # ==================================================================================================
 #  Endpoints output status
@@ -306,7 +364,7 @@ def api_error_getting_all_recipes_status() -> sch.OutputStatus:
 # ----------------------------------------------------------------------------------------------
 def api_recipe_details_status() -> sch.OutputStatus:
     return sch.OutputStatus(
-        status='api_recipe-details_retrieved',
+        status='api_recipe_details_retrieved',
         error=False,
         details=sch.StatusDetails(
             description='Recipe details retrieved successfully.'
@@ -319,5 +377,81 @@ def api_error_getting_recipe_details_status() -> sch.OutputStatus:
         error=True,
         details=sch.StatusDetails(
             description='An error ocurred trying to get recipe details.'
+        ),
+    )
+
+# ----------------------------------------------------------------------------------------------
+#   `buy-recipe` output status
+# ----------------------------------------------------------------------------------------------
+def api_buy_recipe_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='api_recipe_purchase_requested',
+        error=False,
+        details=sch.StatusDetails(
+            description='Recipe purchase requested successfully.'
+        ),
+    )
+
+def api_invalid_checkout_id_error_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='invalid_checkout_id_error',
+        error=True,
+        details=sch.StatusDetails(
+            description='The checkout_id returned by the payment provider is invalid or missing.'
+        ),
+    )
+
+def api_start_checkout_error_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='api_start_checkout_error',
+        error=True,
+        details=sch.StatusDetails(
+            description='To be override with error detail.'
+        ),
+    )
+
+# ----------------------------------------------------------------------------------------------
+#   `payment-webhook` output status
+# ----------------------------------------------------------------------------------------------
+def api_payment_webhook_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='api_payment_webhook_notified',
+        error=False,
+        details=sch.StatusDetails(
+            description='Application payment webhook notified of payment status change.'
+        ),
+    )
+
+
+# ==================================================================================================
+#  Payment provider simulator endpoints output status
+# ==================================================================================================
+# ----------------------------------------------------------------------------------------------
+#   `create-checkout` output status
+# ----------------------------------------------------------------------------------------------
+def pprovider_create_checkout_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='pprovider_checkout_received',
+        error=False,
+        details=sch.StatusDetails(
+            description='Checkout request received.'
+        ),
+    )
+
+def pprovider_payment_info_error_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='pprovider_payment_info_error',
+        error=True,
+        details=sch.StatusDetails(
+            description='Invalid encrypted payment info.'
+        ),
+    )
+
+def pprovider_api_key_error_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='pprovider_api_key_error',
+        error=True,
+        details=sch.StatusDetails(
+            description='Invalid API key.'
         ),
     )

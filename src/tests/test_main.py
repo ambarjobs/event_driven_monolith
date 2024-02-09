@@ -12,6 +12,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 
 import config
+import output_status as ost
 import services as srv
 import schemas as sch
 import utils
@@ -23,10 +24,13 @@ from tests.helpers import Db
 client = TestClient(app=app)
 
 
-class TestMain:
-    # ==============================================================================================
-    #   /signup endpoint test
-    # ==============================================================================================
+# ==================================================================================================
+#   Authentication functionality
+# ==================================================================================================
+class TestAuthenticationApi:
+    # ----------------------------------------------------------------------------------------------
+    #   `/signup` endpoint test
+    # ----------------------------------------------------------------------------------------------
     def test_signup__general_case(
         self,
         test_db: Db,
@@ -143,9 +147,9 @@ class TestMain:
             assert response.status_code == status.HTTP_409_CONFLICT
             assert response.json() == expected_result
 
-    # ==============================================================================================
-    #   /login endpoint test
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `/login` endpoint test
+    # ----------------------------------------------------------------------------------------------
     def test_login__general_case(
         self,
         test_db: Db,
@@ -455,9 +459,13 @@ class TestMain:
             timedelta(seconds=config.TEST_EXECUTION_LIMIT)
         )
 
-    # ==============================================================================================
-    #   /confirm-email-api endpoint test
-    # ==============================================================================================
+# ==================================================================================================
+#   Email confirmation functionality
+# ==================================================================================================
+class TestEmailConfirmationApi:
+    # ----------------------------------------------------------------------------------------------
+    #   `/confirm-email-api` endpoint test
+    # ----------------------------------------------------------------------------------------------
     def test_confirm_email_api__general_case(
         self,
         test_db: Db,
@@ -621,9 +629,9 @@ class TestMain:
         assert content.details.data['confirmation_datetime'] == previous_confirmation_datetime_iso
         assert content.details.data['email'] == token_confirmation_info.user_id
 
-    # ==============================================================================================
-    #   /confirm-email endpoint test
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `/confirm-email` endpoint test
+    # ----------------------------------------------------------------------------------------------
     def test_confirm_email__general_case(
         self,
         test_db: Db,
@@ -762,10 +770,14 @@ class TestMain:
         for message_part in message_parts:
             assert message_part in content
 
-    # ==============================================================================================
-    #   /load-recipes endpoint test
-    # ==============================================================================================
-    def test_load_recipe__general_case(
+# ==================================================================================================
+#   Recipes functionality
+# ==================================================================================================
+class TestRecipesApi:
+    # ----------------------------------------------------------------------------------------------
+    #   `/load-recipes` endpoint test
+    # ----------------------------------------------------------------------------------------------
+    def test_load_recipes__general_case(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -814,7 +826,7 @@ class TestMain:
             'description'
         ) == 'Recipes loaded successfully.'
 
-    def test_load_recipe__invalid_token(
+    def test_load_recipes__invalid_token(
         self,
         admin_credentials: sch.UserCredentials,
         recipe_csv_file: io.BytesIO,
@@ -839,7 +851,7 @@ class TestMain:
             'description'
         ) == 'Invalid token: Signature verification failed.'
 
-    def test_load_recipe__expired_token(
+    def test_load_recipes__expired_token(
         self,
         admin_credentials: sch.UserCredentials,
         recipe_csv_file: io.BytesIO,
@@ -863,7 +875,7 @@ class TestMain:
             'description'
         ) == 'The token has expired, log in again: Signature has expired.'
 
-    def test_load_recipe__invalid_user(
+    def test_load_recipes__invalid_user(
         self,
         user_credentials: sch.UserCredentials,
         recipe_csv_file: io.BytesIO,
@@ -887,7 +899,7 @@ class TestMain:
             'description'
         ) == 'Only application admin can load recipes.'
 
-    def test_load_recipe__error_storing_recipe(
+    def test_load_recipes__error_storing_recipe(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -938,9 +950,9 @@ class TestMain:
             utils.deep_traversal(response_data, 'details', 'data')
         ) == ['lemon-cake', 'baked-potatoes']
 
-    # ==============================================================================================
-    #   /get-all-recipes endpoint test
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   Databases setup function
+    # ----------------------------------------------------------------------------------------------
     def recipe_databases_setup(
         self,
         test_db: Db,
@@ -983,6 +995,9 @@ class TestMain:
         }
         user_recipes_db.create_document(document_id=user_credentials.id, body=user_recipes_data)
 
+    # ----------------------------------------------------------------------------------------------
+    #   `/get-all-recipes` endpoint test
+    # ----------------------------------------------------------------------------------------------
     def test_get_all_recipes_endpoint__general_case(
         self,
         test_db: Db,
@@ -1124,10 +1139,10 @@ class TestMain:
             'description'
         ) == 'The token has expired, log in again: Signature has expired.'
 
-    # ==============================================================================================
-    #   /get-recipe-details endpoint test
-    # ==============================================================================================
-    def test_get_recipe_details_endpoint__general_case__available_recipe(
+    # ----------------------------------------------------------------------------------------------
+    #   `/get-recipe-details` endpoint test
+    # ----------------------------------------------------------------------------------------------
+    def test_get_recipe_details__general_case__available_recipe(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -1157,7 +1172,7 @@ class TestMain:
 
         recipe_details_status = response.json()
         assert (
-            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe-details_retrieved'
+            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe_details_retrieved'
         )
         assert utils.deep_traversal(recipe_details_status, 'error') is False
         assert utils.deep_traversal(
@@ -1172,7 +1187,7 @@ class TestMain:
         assert 'price' in api_recipe
         assert api_recipe == recipe.to_json()
 
-    def test_get_recipe_details_endpoint__general_case__purchased_recipe(
+    def test_get_recipe_details__general_case__purchased_recipe(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -1202,7 +1217,7 @@ class TestMain:
 
         recipe_details_status = response.json()
         assert (
-            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe-details_retrieved'
+            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe_details_retrieved'
         )
         assert utils.deep_traversal(recipe_details_status, 'error') is False
         assert utils.deep_traversal(
@@ -1219,7 +1234,7 @@ class TestMain:
 
         assert api_recipe == expected_recipe.to_json()
 
-    def test_get_recipe_details_endpoint__general_case__requested_recipe(
+    def test_get_recipe_details__general_case__requested_recipe(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -1249,7 +1264,7 @@ class TestMain:
 
         recipe_details_status = response.json()
         assert (
-            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe-details_retrieved'
+            utils.deep_traversal(recipe_details_status, 'status') == 'api_recipe_details_retrieved'
         )
         assert utils.deep_traversal(recipe_details_status, 'error') is False
         assert utils.deep_traversal(
@@ -1267,7 +1282,7 @@ class TestMain:
 
         assert api_recipe == expected_recipe.to_json()
 
-    def test_get_recipe_details_endpoint__recipe_reading_error(
+    def test_get_recipe_details__recipe_reading_error(
         self,
         test_db: Db,
         another_test_db: Db,
@@ -1318,7 +1333,7 @@ class TestMain:
         ) == 'An error ocurred trying to get recipe details.'
 
 
-    def test_get_recipe_details_endpoint__invalid_token(
+    def test_get_recipe_details__invalid_token(
         self,
         user_credentials: sch.UserCredentials,
     ) -> None:
@@ -1341,7 +1356,7 @@ class TestMain:
             'description'
         ) == 'Invalid token: Signature verification failed.'
 
-    def test_get_recipe_details_endpoint__expired_token(
+    def test_get_recipe_details__expired_token(
         self,
         user_credentials: sch.UserCredentials,
     ) -> None:
@@ -1362,3 +1377,406 @@ class TestMain:
             'details',
             'description'
         ) == 'The token has expired, log in again: Signature has expired.'
+
+
+# ==================================================================================================
+#   Purchasing functionality
+# ==================================================================================================
+class TestPurchasingApi:
+    # ----------------------------------------------------------------------------------------------
+    #   `/buy-recipe` endpoint test
+    # ----------------------------------------------------------------------------------------------
+    def test_buy_recipe__general_case(
+        self,
+        user_credentials: sch.UserCredentials,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        encr_payment_info = cc_payment_info.encrypt()
+
+        with mock.patch(target='services.start_checkout', autospec=True) as mock_start_checkout:
+            mock_start_checkout.return_value = ost.start_checkout_status()
+            buy_recipe_response = client.post(
+                url=f'/buy-recipe/{recipe.id}',
+                json={
+                    'encr_info': encr_payment_info.decode(encoding=config.APP_ENCODING_FORMAT)
+                },
+                headers={'Authorization': f'Bearer {token}'}
+            )
+
+        assert buy_recipe_response.status_code == status.HTTP_201_CREATED
+        mock_start_checkout.assert_called_with(
+            user_id=user_credentials.id,
+            recipe_id=recipe.id,
+            payment_encr_info=encr_payment_info,
+        )
+
+    def test_buy_recipe__create_checkout_error(
+        self,
+        user_credentials: sch.UserCredentials,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        encr_payment_info = cc_payment_info.encrypt()
+
+        create_checkout_status = 'create_checkout_error'
+        create_checkout_description = 'Some error from `create-checkout` endpoint.'
+        create_checkout_error_status = sch.OutputStatus(
+            status=create_checkout_status,
+            error=True,
+            details=sch.StatusDetails(
+                description=create_checkout_description
+            ),
+        )
+
+        with mock.patch(target='services.start_checkout', autospec=True) as mock_start_checkout:
+            mock_start_checkout.return_value = create_checkout_error_status
+            buy_recipe_response = client.post(
+                url=f'/buy-recipe/{recipe.id}',
+                json={
+                    'encr_info': encr_payment_info.decode(encoding=config.APP_ENCODING_FORMAT)
+                },
+                headers={'Authorization': f'Bearer {token}'}
+            )
+
+        assert buy_recipe_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+        buy_recipe_response_json = buy_recipe_response.json()
+
+        assert utils.deep_traversal(buy_recipe_response_json, 'status') == create_checkout_status
+        assert (
+            utils.deep_traversal(buy_recipe_response_json, 'details', 'description') ==
+            create_checkout_description
+        )
+
+    def test_buy_recipe__create_checkout__http_error(
+        self,
+        user_credentials: sch.UserCredentials,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+
+        encr_payment_info = cc_payment_info.encrypt()
+
+        create_checkout_status = 'http_error'
+        create_checkout_description = 'Some HTTP error from `create-checkout` endpoint.'
+        create_checkout_status_code = status.HTTP_502_BAD_GATEWAY
+        create_checkout_error_data = {'errors': ['Some HTTP error.']}
+        create_checkout_error_status = sch.OutputStatus(
+            status=create_checkout_status,
+            error=True,
+            details=sch.StatusDetails(
+                description=create_checkout_description,
+                error_code=create_checkout_status_code,
+                data=create_checkout_error_data,
+            ),
+        )
+
+        with mock.patch(target='services.start_checkout', autospec=True) as mock_start_checkout:
+            mock_start_checkout.return_value = create_checkout_error_status
+            buy_recipe_response = client.post(
+                url=f'/buy-recipe/{recipe.id}',
+                json={
+                    'encr_info': encr_payment_info.decode(encoding=config.APP_ENCODING_FORMAT)
+                },
+                headers={'Authorization': f'Bearer {token}'}
+            )
+
+        assert buy_recipe_response.status_code == create_checkout_status_code
+
+        buy_recipe_response_json = buy_recipe_response.json()
+
+        assert utils.deep_traversal(buy_recipe_response_json, 'status') == create_checkout_status
+        assert (
+            utils.deep_traversal(buy_recipe_response_json, 'details', 'description') ==
+            create_checkout_description
+        )
+        assert (
+            utils.deep_traversal(buy_recipe_response_json, 'details', 'error_code') ==
+            create_checkout_status_code
+        )
+        assert (
+            utils.deep_traversal(buy_recipe_response_json, 'details', 'data') ==
+            create_checkout_error_data
+        )
+
+    def test_buy_recipe__invalid_token(
+        self,
+        user_credentials: sch.UserCredentials,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload)
+        invalid_token = token[:-1]
+
+        encr_payment_info = cc_payment_info.encrypt()
+
+        response = client.post(
+            url=f'/buy-recipe/{recipe.id}',
+            json={
+                'encr_info': encr_payment_info.decode(encoding=config.APP_ENCODING_FORMAT)
+            },
+            headers={'Authorization': f'Bearer {invalid_token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'invalid_token'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'Invalid token: Signature verification failed.'
+
+    def test_buy_recipe__expired_token(
+        self,
+        recipe: sch.Recipe,
+        user_credentials: sch.UserCredentials,
+        cc_payment_info: sch.PaymentCcInfo,
+    ) -> None:
+        payload = {'sub': user_credentials.id}
+        token = utils.create_token(payload=payload, expiration_hours=-1.0)
+
+        encr_payment_info = cc_payment_info.encrypt()
+
+        response = client.post(
+            url=f'/buy-recipe/{recipe.id}',
+            json={
+                'encr_info': encr_payment_info.decode(encoding=config.APP_ENCODING_FORMAT)
+            },
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        response_data = response.json()
+        assert utils.deep_traversal(response_data, 'status') == 'expired_token'
+        assert utils.deep_traversal(response_data, 'error') is True
+        assert utils.deep_traversal(
+            response_data,
+            'details',
+            'description'
+        ) == 'The token has expired, log in again: Signature has expired.'
+
+    # ----------------------------------------------------------------------------------------------
+    #   `/payment-webhook` endpoint test
+    # ----------------------------------------------------------------------------------------------
+    def test_payment_webhook__general_case(
+        self,
+        recipe: sch.Recipe,
+        checkout_id: str,
+        payment_id: str,
+        payment_status: int,
+    ) -> None:
+        with mock.patch(
+            target='services.process_payment',
+            autospec=True
+        ) as mock_process_payment:
+            mock_process_payment.return_value = ost.process_payment_status()
+
+            body = {
+                'recipe_id': recipe.id,
+                'payment_id': payment_id,
+                'payment_status': payment_status,
+            }
+            payment_webhook_response = client.post(
+                url=f'/payment-webhook/{checkout_id}',
+                json=body
+            )
+
+            assert payment_webhook_response.status_code == status.HTTP_202_ACCEPTED
+
+            payment_webhook_response_json = payment_webhook_response.json()
+
+            expected_status = ost.api_payment_webhook_status()
+
+            assert payment_webhook_response_json == expected_status.model_dump()
+
+    def test_payment_webhook__process_payment_error(
+        self,
+        recipe: sch.Recipe,
+        checkout_id: str,
+        payment_id: str,
+        payment_status: int,
+    ) -> None:
+        with mock.patch(
+            target='services.process_payment',
+            autospec=True
+        ) as mock_process_payment:
+            mock_process_payment.return_value = ost.process_payment_checkout_not_found_status()
+
+            body = {
+                'recipe_id': recipe.id,
+                'payment_id': payment_id,
+                'payment_status': payment_status,
+            }
+            payment_webhook_response = client.post(
+                url=f'/payment-webhook/{checkout_id}',
+                json=body
+            )
+
+            assert payment_webhook_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+            payment_webhook_response_json = payment_webhook_response.json()
+
+            expected_status = ost.process_payment_checkout_not_found_status()
+
+            assert payment_webhook_response_json == expected_status.model_dump()
+
+# ==================================================================================================
+#   Payment Provider Simulator functionality
+# ==================================================================================================
+class TestPaymentProviderSimulatorApi:
+    # ----------------------------------------------------------------------------------------------
+    #   `/create-checkout` endpoint test
+    # ----------------------------------------------------------------------------------------------
+    def test_create_checkout__general_case(
+        self,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+        checkout_id: str,
+    ) -> None:
+        with mock.patch(
+            target='services.payment_processing',
+            autospec=True
+        ) as mock_payment_processing:
+            with mock.patch(target='main.uuid4') as mock_uuid4:
+                mock_uuid4.return_value = checkout_id
+
+                mock_payment_processing.return_value = ost.start_checkout_status()
+
+                body = {
+                    'payment_encr_info': {
+                        'encr_info': cc_payment_info.encrypt().decode(config.APP_ENCODING_FORMAT)
+                    },
+                    'api_key': config.PAYMENT_PROVIDER_API_KEY
+                }
+                create_checkout_response = client.post(
+                    url=f'/create-checkout/{recipe.id}',
+                    json=body
+                )
+
+                assert create_checkout_response.status_code == status.HTTP_201_CREATED
+
+                create_checkout_response_json = create_checkout_response.json()
+
+
+                expected_status = ost.pprovider_create_checkout_status()
+                expected_status.details.data = {'checkout_id': checkout_id}
+
+                assert create_checkout_response_json == expected_status.model_dump()
+
+    def test_create_checkout__payment_processing_error(
+        self,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+        checkout_id: str,
+    ) -> None:
+        with mock.patch(
+            target='services.payment_processing',
+            autospec=True
+        ) as mock_payment_processing:
+            with mock.patch(target='main.uuid4') as mock_uuid4:
+                mock_uuid4.return_value = checkout_id
+
+                mock_payment_processing.return_value = ost.error_accessing_app_webhook_status()
+
+                body = {
+                    'payment_encr_info': {
+                        'encr_info': cc_payment_info.encrypt().decode(config.APP_ENCODING_FORMAT)
+                    },
+                    'api_key': config.PAYMENT_PROVIDER_API_KEY
+                }
+                create_checkout_response = client.post(
+                    url=f'/create-checkout/{recipe.id}',
+                    json=body
+                )
+
+                assert create_checkout_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+                create_checkout_response_json = create_checkout_response.json()
+
+
+                expected_status = ost.error_accessing_app_webhook_status()
+
+                assert create_checkout_response_json == expected_status.model_dump()
+
+    def test_create_checkout__invalid_encrypted_payment_info(
+        self,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+        checkout_id: str,
+    ) -> None:
+        with mock.patch(
+            target='services.payment_processing',
+            autospec=True
+        ) as mock_payment_processing:
+            with mock.patch(target='main.uuid4') as mock_uuid4:
+                mock_uuid4.return_value = checkout_id
+
+                mock_payment_processing.return_value = ost.start_checkout_status()
+
+                body = {
+                    'payment_encr_info': {
+                        'encr_info': cc_payment_info.encrypt().decode(
+                            config.APP_ENCODING_FORMAT
+                        )[:-1]
+                    },
+                    'api_key': config.PAYMENT_PROVIDER_API_KEY
+                }
+                create_checkout_response = client.post(
+                    url=f'/create-checkout/{recipe.id}',
+                    json=body
+                )
+
+                assert create_checkout_response.status_code == status.HTTP_400_BAD_REQUEST
+
+                create_checkout_response_json = create_checkout_response.json()
+                expected_status = ost.pprovider_payment_info_error_status()
+
+                assert create_checkout_response_json == expected_status.model_dump()
+
+    def test_create_checkout__invalid_api_key(
+        self,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+        checkout_id: str,
+    ) -> None:
+        with mock.patch(
+            target='services.payment_processing',
+            autospec=True
+        ) as mock_payment_processing:
+            with mock.patch(target='main.uuid4') as mock_uuid4:
+                mock_uuid4.return_value = checkout_id
+
+                mock_payment_processing.return_value = ost.start_checkout_status()
+
+                body = {
+                    'payment_encr_info': {
+                        'encr_info': cc_payment_info.encrypt().decode(config.APP_ENCODING_FORMAT)
+                    },
+                    # If `api_key` don't have 64 bytes the error will be on payload validation.
+                    'api_key': 'invalid!invalid!invalid!invalid!invalid!invalid!invalid!invalid!'
+                }
+                create_checkout_response = client.post(
+                    url=f'/create-checkout/{recipe.id}',
+                    json=body
+                )
+
+                assert create_checkout_response.status_code == status.HTTP_401_UNAUTHORIZED
+
+                create_checkout_response_json = create_checkout_response.json()
+
+
+                expected_status = ost.pprovider_api_key_error_status()
+
+                assert create_checkout_response_json == expected_status.model_dump()

@@ -49,11 +49,24 @@ APP_DATABASES_INFO = [
     DatabaseInfo(
         name=config.USER_RECIPES_DB_NAME,
         indexes=[Index(name=f'{config.USER_RECIPES_DB_NAME}-id--index', fields=['_id'])]),
+    DatabaseInfo(
+        name=config.PAYMENT_DB_NAME,
+        indexes=[
+            Index(
+                name=f'{config.PAYMENT_DB_NAME}-id--checkout-id--index',
+                fields=['checkout_id', '_id']
+            )
+        ]
+    ),
 ]
 
 # ==================================================================================================
 #   Initialization
 # ==================================================================================================
+
+# --------------------------------------------------------------------------------------------------
+#   Database
+# --------------------------------------------------------------------------------------------------
 def init_app_databases(databases_info: Sequence[DatabaseInfo]) -> None:
     try:
         db.init_databases(database_names=[info.name for info in databases_info])
@@ -92,6 +105,9 @@ def create_admin_user() -> None:
     )
 
 
+# --------------------------------------------------------------------------------------------------
+#   Consumers
+# --------------------------------------------------------------------------------------------------
 def start_consumer_thread(pub_sub: ps.PubSub, subscription: ps.Subscription) -> None:
     """Thread to start a consumer."""
     try:

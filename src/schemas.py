@@ -1,8 +1,9 @@
 # ==================================================================================================
 #  Application schemas (validation and serialization)
 # ==================================================================================================
+import json
 from datetime import datetime, UTC
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Annotated, Any
 
 from fastapi.encoders import jsonable_encoder
@@ -14,18 +15,24 @@ from pydantic import (
     Field,
     SecretStr,
 )
+from pydantic_extra_types.payment import PaymentCardNumber
 from pydantic.functional_validators import AfterValidator
 
+import config
 import utils
+
 
 # --------------------------------------------------------------------------------------------------
 #   Fields limits
 # --------------------------------------------------------------------------------------------------
+NAME_MIN_LENGTH = 4
 NAME_MAX_LENGTH = 100
 GENERAL_TEXT_MAX_LENGTH = 1024
 MEDIUM_TEXT_MAX_LENGTH = 2048
+LARGE_TEXT_MAX_LENGTH = 4096
 SMALL_FIELD_MAX_LENGTH = 20
 LARGE_FIELD_MAX_LENGTH = 80
+UUID4_SIZE = 36
 
 PASSWD_MAX_LENGTH = 64
 PHONE_MAX_LENGTH = SMALL_FIELD_MAX_LENGTH
@@ -34,6 +41,11 @@ TOKEN_MAX_LENGTH = GENERAL_TEXT_MAX_LENGTH
 
 MEDIUM_LIST_ITEMS_LIMIT = 20
 
+CURRENT_YEAR = datetime.now(tz=UTC).year
+CC_EXPIRATION_RANGE = 4
+MAX_CC_INSTALLMENTS = 12
+
+PAYMENT_PROVIDER_API_KEY_LENGTH = 64
 
 # --------------------------------------------------------------------------------------------------
 #   Output status
@@ -68,7 +80,7 @@ class UserCredentials(BaseModel):
 class UserInfo(BaseModel):
     """User information schema."""
     id: EmailStr
-    name: str = Field(max_length=NAME_MAX_LENGTH)
+    name: str = Field(min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
     phone_number: str | None = Field(default=None, max_length=PHONE_MAX_LENGTH)
     address: str | None = Field(default=None, max_length=ADDRESS_MAX_LENGTH)
 
@@ -79,7 +91,7 @@ class UserInfo(BaseModel):
 class EmailConfirmationInfo(BaseModel):
     """User information used for email confirmation."""
     user_id: EmailStr
-    user_name: str = Field(max_length=NAME_MAX_LENGTH)
+    user_name: str = Field(min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
     base_url: str | None = None
 
 
@@ -167,5 +179,75 @@ class Recipe(BaseModel):
 
 class UserRecipe(BaseModel):
     """User recipe representation."""
-    recipe_id: str
-    status: str
+    recipe_id: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    status: str = Field(min_length=1, max_length=SMALL_FIELD_MAX_LENGTH)
+
+
+# --------------------------------------------------------------------------------------------------
+#   Purchasing
+# --------------------------------------------------------------------------------------------------
+class PaymentStatus(IntEnum):
+    """Payment status"""
+    PENDING = 0
+    PAID = 1
+    CANCELLED = 2
+    FAILED = 3
+
+
+class PaymentCcInfo(BaseModel):
+    """Payment information for credit cards representation."""
+    card_holder_name: str = Field(min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
+    card_number: PaymentCardNumber
+    expiration_month: int = Field(ge=1, le=12)
+    expiration_year: int = Field(
+        ge=CURRENT_YEAR,
+        le=CURRENT_YEAR + CC_EXPIRATION_RANGE
+    )
+    cvv: int = Field(ge=0, le=999)
+    number_installments: int = Field(ge=1, le=MAX_CC_INSTALLMENTS, default=MAX_CC_INSTALLMENTS)
+
+    @classmethod
+    def decrypt(cls, data: bytes) -> 'PaymentCcInfo':
+        """Get encrypted data and generate a `PaymentCcInfo` schema object from it."""
+        serialized_data = utils.decr_data(data=data, key=config.PAYMENT_PROVIDER_ENCRYPTION_KEY)
+        return cls(**json.loads(serialized_data))
+
+    def encrypt(self) -> bytes:
+        """Provide encrypted data corresponding to this schema object."""
+        return utils.encr_data(
+            data=self.model_dump_json(),
+            key=config.PAYMENT_PROVIDER_ENCRYPTION_KEY
+        )
+
+
+class PaymentEncrInfo(BaseModel):
+    """Encrypted payment information."""
+    encr_info: bytes = Field(min_length=1, max_length=LARGE_TEXT_MAX_LENGTH)
+
+
+class PaymentCheckoutInfo(BaseModel):
+    """Payment information for checkout on simulated payment provider."""
+    payment_encr_info: PaymentEncrInfo
+    api_key: str = Field(
+        min_length=PAYMENT_PROVIDER_API_KEY_LENGTH,
+        max_length=PAYMENT_PROVIDER_API_KEY_LENGTH
+    )
+
+
+class RecipePurchaseInfo(BaseModel):
+    """Recipe purchase request message."""
+    user_id: EmailStr
+    recipe_id: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+
+
+class PurchaseStatusInfo(RecipePurchaseInfo):
+    """Purchased payment status change event message."""
+    payment_status: PaymentStatus
+    when: AwareDatetime = datetime.now(tz=UTC)
+
+
+class WebhookPaymentInfo(BaseModel):
+    """Payment provider payment info sent to application webhook."""
+    recipe_id: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    payment_id: str = Field(min_length=UUID4_SIZE, max_length=UUID4_SIZE)
+    payment_status: PaymentStatus

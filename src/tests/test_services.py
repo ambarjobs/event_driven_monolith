@@ -8,10 +8,13 @@ from typing import Any
 from unittest import mock
 
 import bcrypt
+import httpx
 import pytest
+from fastapi import status
 from pydantic import SecretStr, ValidationError
 
 import config
+import output_status as ost
 import schemas as sch
 import services as srv
 import utils
@@ -20,10 +23,13 @@ from exceptions import InvalidCsvFormatError
 from tests.helpers import Db
 
 
-class TestServices:
-    # ==============================================================================================
-    #   user_sign_up service
-    # ==============================================================================================
+# ==================================================================================================
+#   Authentication functionality
+# ==================================================================================================
+class TestAuthenticationServices:
+    # ----------------------------------------------------------------------------------------------
+    #   `user_sign_up` service
+    # ----------------------------------------------------------------------------------------------
     def test_user_sign_up__general_case(
         self,
         test_db: Db,
@@ -59,6 +65,7 @@ class TestServices:
                 'user_name': user_info.name,
                 'base_url': base_url
             }
+            # Avoiding spaces on the serialized data
             expected_event_message = json.dumps(expected_event, separators=(',', ':'))
             mock_publish.assert_called_with(
                 topic='user-signed-up',
@@ -134,9 +141,9 @@ class TestServices:
             )
             assert sign_up_status == expected_status
 
-    # ==============================================================================================
-    #   authentication service
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `authentication` service
+    # ----------------------------------------------------------------------------------------------
     def test_authentication__general_case(
         self,
         test_db: Db,
@@ -400,9 +407,14 @@ class TestServices:
             ) - before_login > timedelta(seconds=0)
         )
 
-    # ==============================================================================================
-    #   Message delivery services
-    # ==============================================================================================
+
+# ==================================================================================================
+#   Message delivery services
+# ==================================================================================================
+class TestMessageDeliveryServices:
+    # ----------------------------------------------------------------------------------------------
+    #   `stdout_message_delivery` service
+    # ----------------------------------------------------------------------------------------------
     def test_stdout_message_delivery__general_case(self, capsys) -> None:
         test_message = '''Some multi-line message.
         To be delivered to stdout.
@@ -412,9 +424,14 @@ class TestServices:
 
         assert test_message in captured.out
 
-    # ==============================================================================================
-    #   email_confirmation consumer service
-    # ==============================================================================================
+
+# ==================================================================================================
+#   Email confirmation functionality
+# ==================================================================================================
+class TestEmailConfirmationServices:
+    # ----------------------------------------------------------------------------------------------
+    #   `email_confirmation` consumer service
+    # ----------------------------------------------------------------------------------------------
     def test_email_confirmation_consumer__general_case(
         self,
         capsys,
@@ -450,9 +467,9 @@ class TestServices:
         assert 'email_confirmation_token' in email_confirmation_data
         assert email_confirmation_data['email_confirmation_token']
 
-    # ==============================================================================================
-    #   check_email_confirmation service
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `check_email_confirmation` service
+    # ----------------------------------------------------------------------------------------------
     def test_check_email_confirmation__general_case(
         self,
         email_confirmation_info: sch.EmailConfirmationInfo,
@@ -637,9 +654,9 @@ class TestServices:
         )
         assert email_confirmation_status.details.data['email'] == token_confirmation_info.user_id
 
-    # ==============================================================================================
-    #   enable_user consumer service
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `enable_user` consumer service
+    # ----------------------------------------------------------------------------------------------
     def test_enable_user_consumer__general_case(
         self,
         callback_null_params,
@@ -662,9 +679,14 @@ class TestServices:
         user_credentials_data = user_credentials_db.get_document_by_id(document_id=user_id)
         assert utils.deep_traversal(user_credentials_data, 'validated') is True
 
-    # ==============================================================================================
-    #   parse_recipe_data service
-    # ==============================================================================================
+
+# ==================================================================================================
+#   Recipes functionality
+# ==================================================================================================
+class TestRecipesServices:
+    # ----------------------------------------------------------------------------------------------
+    #   `parse_recipe_data` service
+    # ----------------------------------------------------------------------------------------------
     def test_parse_recipe_data__general_case(
         self,
         recipe_csv_data: dict[str, Any],
@@ -730,9 +752,9 @@ class TestServices:
         with pytest.raises(InvalidCsvFormatError):
             srv.parse_recipe_data(csv_data=recipe_csv_data)
 
-    # ==============================================================================================
-    #   import_csv_recipes service
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `import_csv_recipes` service
+    # ----------------------------------------------------------------------------------------------
     def test_import_csv_recipes__general_case(
         self,
         recipe_csv_file: io.BytesIO,
@@ -838,9 +860,9 @@ class TestServices:
             import_recipes_status.details.description == 'The content of the CSV file is invalid.'
         )
 
-    # ==============================================================================================
-    #   store_recipe service
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `store_recipe` service
+    # ----------------------------------------------------------------------------------------------
     def test_store_recipe__general_case(self, recipe) -> None:
         with mock.patch(target='database.CouchDb.upsert_document') as mock_upsert:
             store_status = srv.store_recipe(recipe)
@@ -877,9 +899,9 @@ class TestServices:
             'reason': 'Name or password is incorrect.'
         }
 
-    # ==============================================================================================
-    #   get_all_recipes service
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `get_all_recipes` service
+    # ----------------------------------------------------------------------------------------------
     def test_get_all_recipes__general_case(
         self,
         test_db: Db,
@@ -946,9 +968,9 @@ class TestServices:
             'reason': 'Name or password is incorrect.'
         }
 
-    # ==============================================================================================
-    #   get_user_recipes service
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `get_user_recipes` service
+    # ----------------------------------------------------------------------------------------------
     def test_get_user_recipes__general_case(
         self,
         test_db: Db,
@@ -1027,9 +1049,9 @@ class TestServices:
             'reason': 'Name or password is incorrect.'
         }
 
-    # ==============================================================================================
-    #   get_specific_recipe service
-    # ==============================================================================================
+    # ----------------------------------------------------------------------------------------------
+    #   `get_specific_recipe` service
+    # ----------------------------------------------------------------------------------------------
     def test_get_specific_recipe__general_case(
         self,
         test_db: Db,
@@ -1097,3 +1119,416 @@ class TestServices:
             'error': 'unauthorized',
             'reason': 'Name or password is incorrect.'
         }
+
+
+# ==================================================================================================
+#   Purchasing functionality
+# ==================================================================================================
+class TestPurchasingServices:
+    # ----------------------------------------------------------------------------------------------
+    #   `start_checkout` service
+    # ----------------------------------------------------------------------------------------------
+    def test_start_checkout__general_case(
+        self,
+        test_db: Db,
+        user_credentials: sch.UserCredentials,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+        checkout_id: str,
+    ) -> None:
+        payment_db = test_db
+        payment_db.database_name = config.PAYMENT_DB_NAME
+        payment_db.create()
+        payment_db.add_permissions()
+
+        test_payment_encr_info = cc_payment_info.encrypt()
+        body = {
+            'payment_encr_info': {'encr_info': test_payment_encr_info},
+            'api_key': config.PAYMENT_PROVIDER_API_KEY
+        }
+
+        test_create_checkout_status = ost.pprovider_create_checkout_status().model_dump()
+        test_create_checkout_status['details']['data']={'checkout_id': checkout_id}
+
+        with mock.patch.object(
+            target=httpx,
+            attribute='post',
+            autospec=True
+        ) as mock_create_checkout_post:
+            with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
+                # Avoiding a long line.
+                mock_call = mock_create_checkout_post.return_value.raise_for_status.return_value
+                mock_call.json.return_value = test_create_checkout_status
+
+                checkout_status = srv.start_checkout(
+                    user_id=user_credentials.id,
+                    recipe_id=recipe.id,
+                    payment_encr_info=test_payment_encr_info
+                )
+
+                mock_create_checkout_post.assert_called_with(
+                    url=f'{config.PAYMENT_PROVIDER_CHECKOUT_URL}{recipe.id}',
+                    json=body,
+                )
+
+                payment_db_data = payment_db.get_document_by_id(document_id=checkout_id)
+
+                assert utils.deep_traversal(payment_db_data, '_id') == checkout_id
+                assert utils.deep_traversal(payment_db_data, 'user_id') == user_credentials.id
+
+                topic_message = {
+                    'user_id': user_credentials.id,
+                    'recipe_id': recipe.id
+                }
+
+                mock_publish.assert_called_with(
+                    topic='recipe-purchase-requested',
+                    # Avoiding spaces on the serialized data
+                    message=json.dumps(topic_message, separators=(',', ':')),
+                )
+                assert checkout_status == ost.start_checkout_status()
+
+    def test_start_checkout__create_checkout_error(
+        self,
+        user_credentials: sch.UserCredentials,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+    ) -> None:
+        test_payment_encr_info = cc_payment_info.encrypt()
+        body = {
+            'payment_encr_info': {'encr_info': test_payment_encr_info},
+            'api_key': config.PAYMENT_PROVIDER_API_KEY
+        }
+
+        test_create_checkout_error_status = ost.pprovider_payment_info_error_status().model_dump()
+
+        with mock.patch.object(
+            target=httpx,
+            attribute='post',
+            autospec=True
+        ) as mock_create_checkout_post:
+            # Avoiding a long line.
+            mock_call = mock_create_checkout_post.return_value.raise_for_status.return_value
+            mock_call.json.return_value = test_create_checkout_error_status
+
+            checkout_status = srv.start_checkout(
+                user_id=user_credentials.id,
+                recipe_id=recipe.id,
+                payment_encr_info=test_payment_encr_info
+            )
+
+            mock_create_checkout_post.assert_called_with(
+                url=f'{config.PAYMENT_PROVIDER_CHECKOUT_URL}{recipe.id}',
+                json=body,
+            )
+
+            assert checkout_status == ost.pprovider_payment_info_error_status()
+
+    def test_start_checkout__invalid_checkout_id(
+        self,
+        user_credentials: sch.UserCredentials,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+    ) -> None:
+        test_payment_encr_info = cc_payment_info.encrypt()
+        body = {
+            'payment_encr_info': {'encr_info': test_payment_encr_info},
+            'api_key': config.PAYMENT_PROVIDER_API_KEY
+        }
+
+        test_create_checkout_status = ost.pprovider_create_checkout_status().model_dump()
+
+        with mock.patch.object(
+            target=httpx,
+            attribute='post',
+            autospec=True
+        ) as mock_create_checkout_post:
+            # Avoiding a long line.
+            mock_call = mock_create_checkout_post.return_value.raise_for_status.return_value
+            mock_call.json.return_value = test_create_checkout_status
+
+            checkout_status = srv.start_checkout(
+                user_id=user_credentials.id,
+                recipe_id=recipe.id,
+                payment_encr_info=test_payment_encr_info
+            )
+
+            mock_create_checkout_post.assert_called_with(
+                url=f'{config.PAYMENT_PROVIDER_CHECKOUT_URL}{recipe.id}',
+                json=body,
+            )
+
+            assert checkout_status == ost.api_invalid_checkout_id_error_status()
+
+    def test_start_checkout__http_error(
+        self,
+        user_credentials: sch.UserCredentials,
+        recipe: sch.Recipe,
+        cc_payment_info: sch.PaymentCcInfo,
+    ) -> None:
+        test_payment_encr_info = cc_payment_info.encrypt()
+        body = {
+            'payment_encr_info': {'encr_info': test_payment_encr_info},
+            'api_key': config.PAYMENT_PROVIDER_API_KEY
+        }
+
+        create_checkout_http_request = httpx.Request(
+                method='POST',
+                url=f'{config.PAYMENT_PROVIDER_CHECKOUT_URL}{recipe.id}'
+            )
+        create_checkout_http_response = httpx.Response(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            json={'errors': ['Some HTTP error.']},
+            request=create_checkout_http_request
+        )
+        create_checkout_http_error = httpx.HTTPStatusError(
+            message='Some HTTP error from `create-checkout` endpoint.',
+            request=create_checkout_http_request,
+            response=create_checkout_http_response
+        )
+
+        test_create_checkout_status = ost.http_error_status(error=create_checkout_http_error)
+
+        with mock.patch.object(
+            target=httpx,
+            attribute='post',
+            autospec=True
+        ) as mock_create_checkout_post:
+            # Avoiding a long line.
+            mock_call = mock_create_checkout_post.return_value.raise_for_status
+            mock_call.side_effect = create_checkout_http_error
+
+            checkout_status = srv.start_checkout(
+                user_id=user_credentials.id,
+                recipe_id=recipe.id,
+                payment_encr_info=test_payment_encr_info
+            )
+
+            mock_create_checkout_post.assert_called_with(
+                url=f'{config.PAYMENT_PROVIDER_CHECKOUT_URL}{recipe.id}',
+                json=body,
+            )
+
+            assert checkout_status == test_create_checkout_status
+    # ----------------------------------------------------------------------------------------------
+    #   `process_payment` service
+    # ----------------------------------------------------------------------------------------------
+    def test_process_payment__general_case(
+        self,
+        test_db: Db,
+        user_id: str,
+        recipe: sch.Recipe,
+        checkout_id: str,
+        payment_id: str,
+        payment_status: int,
+    ) -> None:
+        payment_db = test_db
+        payment_db.database_name = config.PAYMENT_DB_NAME
+        payment_db.create()
+        payment_db.add_permissions()
+
+        webhook_payment_info = sch.WebhookPaymentInfo(
+            recipe_id=recipe.id,
+            payment_id=payment_id,
+            payment_status=payment_status,
+        )
+
+        payment_db.create_document(document_id=checkout_id, body={'user_id': user_id})
+
+        with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
+            process_payment_status = srv.process_payment(
+                checkout_id=checkout_id,
+                webhook_payment_info=webhook_payment_info
+            )
+
+            payment_db_data = payment_db.get_document_by_id(document_id=checkout_id)
+
+            assert utils.deep_traversal(payment_db_data, '_id') == checkout_id
+            assert utils.deep_traversal(payment_db_data, 'user_id') == user_id
+            assert utils.deep_traversal(payment_db_data, 'recipe_id') == recipe.id
+            assert utils.deep_traversal(payment_db_data, 'payment_id') == payment_id
+            assert utils.deep_traversal(payment_db_data, 'payment_status') == payment_status
+
+            message = sch.PurchaseStatusInfo(
+                user_id=user_id,
+                recipe_id=recipe.id,
+                payment_status=payment_status,
+            ).model_dump_json()
+
+            mock_publish.assert_called_with(topic='purchase-status-changed', message=message)
+
+            assert process_payment_status == ost.process_payment_status()
+
+    def test_process_payment__checkout_not_found(
+        self,
+        test_db: Db,
+        user_id: str,
+        recipe: sch.Recipe,
+        checkout_id: str,
+        payment_id: str,
+        payment_status: int,
+    ) -> None:
+        payment_db = test_db
+        payment_db.database_name = config.PAYMENT_DB_NAME
+        payment_db.create()
+        payment_db.add_permissions()
+
+        webhook_payment_info = sch.WebhookPaymentInfo(
+            recipe_id=recipe.id,
+            payment_id=payment_id,
+            payment_status=payment_status,
+        )
+
+        with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
+            process_payment_status = srv.process_payment(
+                checkout_id=checkout_id,
+                webhook_payment_info=webhook_payment_info
+            )
+
+            payment_db_data = payment_db.get_document_by_id(document_id=checkout_id)
+
+            assert payment_db_data  == {'error': 'not_found', 'reason': 'missing'}
+
+            mock_publish.assert_not_called()
+
+            assert process_payment_status == ost.process_payment_checkout_not_found_status()
+
+# ==================================================================================================
+#   Payment Provider Simulator functionality
+# ==================================================================================================
+class TestPaymentProviderSimulator:
+    # ----------------------------------------------------------------------------------------------
+    #   `payment_processing` service
+    # ----------------------------------------------------------------------------------------------
+    def test_payment_processing__general_case(
+        self,
+        recipe: sch.Recipe,
+        checkout_id: str,
+        payment_id: str,
+        payment_status: int,
+    ) -> None:
+        webhook_payment_info = sch.WebhookPaymentInfo(
+            recipe_id=recipe.id,
+            payment_id=payment_id,
+            payment_status=payment_status,
+        )
+
+        with mock.patch.object(
+            target=httpx,
+            attribute='post',
+            autospec=True
+        ) as mock_payment_webhook_post:
+            with mock.patch(target='uuid.uuid4') as mock_uuid4:
+                mock_uuid4.return_value = payment_id
+                # Avoid the `time.sleep` by replacing it for a lambda that returns immediately.
+                with mock.patch(target='time.sleep', wraps=lambda seconds: None):
+                    # Avoiding a long line.
+                    mock_call = mock_payment_webhook_post.return_value.raise_for_status.return_value
+                    mock_call.json.return_value = ost.api_payment_webhook_status().model_dump()
+
+                    payment_processing_status = srv.payment_processing(
+                        checkout_id=checkout_id,
+                        recipe_id=recipe.id,
+                    )
+
+                    mock_payment_webhook_post.assert_called_with(
+                        url=f'{config.APP_WEBHOOK_URL}{checkout_id}',
+                        json=webhook_payment_info.model_dump(),
+                    )
+
+                    assert payment_processing_status == ost.payment_processing_status()
+
+    def test_payment_processing__payment_webhook_error(
+        self,
+        recipe: sch.Recipe,
+        checkout_id: str,
+        payment_id: str,
+        payment_status: int,
+    ) -> None:
+        webhook_payment_info = sch.WebhookPaymentInfo(
+            recipe_id=recipe.id,
+            payment_id=payment_id,
+            payment_status=payment_status,
+        )
+
+        with mock.patch.object(
+            target=httpx,
+            attribute='post',
+            autospec=True
+        ) as mock_payment_webhook_post:
+            with mock.patch(target='uuid.uuid4') as mock_uuid4:
+                mock_uuid4.return_value = payment_id
+                # Avoid the `time.sleep` by replacing it for a lambda that returns immediately.
+                with mock.patch(target='time.sleep', wraps=lambda seconds: None):
+                    # Avoiding a long line.
+                    mock_call = mock_payment_webhook_post.return_value.raise_for_status.return_value
+                    mock_call.json.return_value = (
+                        ost.process_payment_checkout_not_found_status().model_dump()
+                    )
+
+                    payment_processing_status = srv.payment_processing(
+                        checkout_id=checkout_id,
+                        recipe_id=recipe.id,
+                    )
+
+                    mock_payment_webhook_post.assert_called_with(
+                        url=f'{config.APP_WEBHOOK_URL}{checkout_id}',
+                        json=webhook_payment_info.model_dump(),
+                    )
+
+                    assert payment_processing_status == ost.error_accessing_app_webhook_status()
+
+    def test_payment_processing__http_error(
+        self,
+        recipe: sch.Recipe,
+        checkout_id: str,
+        payment_id: str,
+        payment_status: int,
+    ) -> None:
+        webhook_payment_info = sch.WebhookPaymentInfo(
+            recipe_id=recipe.id,
+            payment_id=payment_id,
+            payment_status=payment_status,
+        )
+
+        payment_webhook_http_request = httpx.Request(
+                method='POST',
+                url=f'{config.APP_WEBHOOK_URL}{checkout_id}'
+            )
+        payment_webhook_http_response = httpx.Response(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            json={'errors': ['Some HTTP error.']},
+            request=payment_webhook_http_request
+        )
+        payment_webhook_http_error = httpx.HTTPStatusError(
+            message='Some HTTP error from `payment-webhook` endpoint.',
+            request=payment_webhook_http_request,
+            response=payment_webhook_http_response
+        )
+
+        with mock.patch.object(
+            target=httpx,
+            attribute='post',
+            autospec=True
+        ) as mock_payment_webhook_post:
+            with mock.patch(target='uuid.uuid4') as mock_uuid4:
+                mock_uuid4.return_value = payment_id
+                # Avoid the `time.sleep` by replacing it for a lambda that returns immediately.
+                with mock.patch(target='time.sleep', wraps=lambda seconds: None):
+                    # Avoiding a long line.
+                    mock_call = mock_payment_webhook_post.return_value.raise_for_status
+                    mock_call.side_effect = payment_webhook_http_error
+
+                    payment_processing_status = srv.payment_processing(
+                        checkout_id=checkout_id,
+                        recipe_id=recipe.id,
+                    )
+
+                    mock_payment_webhook_post.assert_called_with(
+                        url=f'{config.APP_WEBHOOK_URL}{checkout_id}',
+                        json=webhook_payment_info.model_dump(),
+                    )
+
+                    assert payment_processing_status == ost.http_error_status(
+                        error=payment_webhook_http_error
+                    )

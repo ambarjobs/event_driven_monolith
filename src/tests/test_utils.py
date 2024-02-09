@@ -1,13 +1,15 @@
 # ==================================================================================================
 #  Utils module tests
 # ==================================================================================================
-import bcrypt
-import config
-import pytest
 import string
+from base64 import b64encode
+
+import bcrypt
+import pytest
 from jose import ExpiredSignatureError, jwt, JWTError
 from pydantic import JsonValue, SecretStr
 
+import config
 import utils
 from exceptions import InvalidAccessTokenKeyError
 
@@ -114,7 +116,7 @@ class TestUtils:
     #   create_token() function
     # ----------------------------------------------------------------------------------------------
     def test_create_token__general_case(self) -> None:
-        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        test_payload: JsonValue = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
         token = utils.create_token(payload=test_payload, expiration_hours=1.0)
 
         token_payload = jwt.decode(
@@ -128,7 +130,7 @@ class TestUtils:
         assert utils.deep_traversal(token_payload, 'field2') == 'value2'
 
     def test_create_token__expired_token(self) -> None:
-        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        test_payload: JsonValue = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
         # token expired one hour ago.
         token = utils.create_token(payload=test_payload, expiration_hours=-1.0)
 
@@ -140,7 +142,7 @@ class TestUtils:
             )
 
     def test_create_token__invalid_token(self) -> None:
-        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        test_payload: JsonValue = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
         # Invalid or corrupted token.
         token = (
             utils.create_token(payload=test_payload, expiration_hours=1.0) + 'invalid'
@@ -169,7 +171,7 @@ class TestUtils:
     #   get_token_payload() function
     # ----------------------------------------------------------------------------------------------
     def test_get_token_payload__general_case(self) -> None:
-        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        test_payload: JsonValue = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
         token = utils.create_token(payload=test_payload, expiration_hours=1.0)
 
         token_payload = utils.get_token_payload(token=token)
@@ -179,7 +181,7 @@ class TestUtils:
         assert utils.deep_traversal(token_payload, 'field2') == 'value2'
 
     def test_get_token_payload__expired_token(self) -> None:
-        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        test_payload: JsonValue = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
         # token expired one hour ago.
         token = utils.create_token(payload=test_payload, expiration_hours=-1.0)
 
@@ -187,7 +189,7 @@ class TestUtils:
             utils.get_token_payload(token=token)
 
     def test_get_token_payload__invalid_token(self) -> None:
-        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        test_payload: JsonValue = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
         # Invalid or corrupted token.
         token = (
             utils.create_token(payload=test_payload, expiration_hours=1.0) + 'invalid'
@@ -197,7 +199,7 @@ class TestUtils:
             utils.get_token_payload(token=token)
 
     def test_get_token_payload__no_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        test_payload: JsonValue = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
         token = utils.create_token(payload=test_payload, expiration_hours=1.0)
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value=None)
 
@@ -205,7 +207,7 @@ class TestUtils:
             utils.get_token_payload(token=token)
 
     def test_get_token_payload__invalid_token_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        test_payload = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
+        test_payload: JsonValue = {'sub': 'test_subject', 'field1': 'value1', 'field2': 'value2'}
         token = utils.create_token(payload=test_payload, expiration_hours=1.0)
         monkeypatch.setattr(target=config, name='ACCESS_TOKEN_SECRET_KEY', value='')
 
@@ -427,5 +429,29 @@ class TestUtils:
         assert utils.slugify(
             'this string has the-separator inside it'
         ) == 'this-string-has-the-separator-inside-it'
+
+
+    # ----------------------------------------------------------------------------------------------
+    #   encr_data() function
+    # ----------------------------------------------------------------------------------------------
+    def test_encr_data__decr_data__general_case(self) -> None:
+        test_data = 'Accented string: áèôãç with \nnew lines and \ttabs.'
+        test_key = b64encode(
+            b'my secret test key with many characters so I can get 32 bytes of it'[:32]
+        )
+
+        encrypted_data = utils.encr_data(data=test_data, key=test_key)
+
+        assert utils.decr_data(data=encrypted_data, key=test_key) == test_data
+
+    def test_encr_data__decr_data__empty_data(self) -> None:
+        test_data = ''
+        test_key = b64encode(
+            b'my secret test key with many characters so I can get 32 bytes of it'[:32]
+        )
+
+        encrypted_data = utils.encr_data(data=test_data, key=test_key)
+
+        assert utils.decr_data(data=encrypted_data, key=test_key) == test_data
 
     # spell-checker: enable

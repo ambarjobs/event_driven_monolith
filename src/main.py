@@ -1,8 +1,10 @@
 # ==================================================================================================
 #  Application endpoints
 # ==================================================================================================
+from uuid import uuid4
 from typing import Annotated
 
+from cryptography.fernet import InvalidToken
 from fastapi import Depends, FastAPI, Request, status, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -32,7 +34,7 @@ def oauth2form_to_credentials(form_data: OAuth2PasswordRequestForm) -> sch.UserC
     return sch.UserCredentials(id=form_data.username, password=SecretStr(form_data.password))
 
 # ==================================================================================================
-#  Sign in
+#  Authentication functionality
 # ==================================================================================================
 @app.post('/signup')
 def signup(
@@ -96,7 +98,7 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]) -> JSONResponse
     return JSONResponse(content=login_status.model_dump(), status_code=status_code)
 
 # ==================================================================================================
-#  Email confirmation
+#  Email confirmation functionality
 # ==================================================================================================
 @app.post('/confirm-email-api')
 def confirm_email_api(token_data: sch.EmailConfirmationToken) -> JSONResponse:
@@ -207,7 +209,7 @@ def confirm_email(token: str, request: Request) -> HTMLResponse:
     return HTMLResponse(content=content)
 
 # ==================================================================================================
-#  Recipes
+#  Recipes functionality
 # ==================================================================================================
 @app.post('/load-recipes')
 def load_recipes(
@@ -273,10 +275,12 @@ def get_all_recipes(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONRespon
         status_code = status.HTTP_400_BAD_REQUEST
         output_status = ost.api_error_getting_all_recipes_status()
         output_status.details.data = all_recipes_service_status.details.data
+        log.error(output_status.details.description)
     elif user_recipes_service_status.error:
         status_code = status.HTTP_400_BAD_REQUEST
         output_status = ost.api_error_getting_all_recipes_status()
         output_status.details.data = user_recipes_service_status.details.data
+        log.error(output_status.details.description)
     else:
         all_recipes = all_recipes_service_status.details.data['all_recipes']
         user_recipes = user_recipes_service_status.details.data['user_recipes']
@@ -320,10 +324,12 @@ def get_recipe_details(
         status_code = status.HTTP_400_BAD_REQUEST
         output_status = ost.api_error_getting_recipe_details_status()
         output_status.details.data = recipe_service_status.details.data
+        log.error(output_status.details.description)
     elif user_recipes_service_status.error:
         status_code = status.HTTP_400_BAD_REQUEST
         output_status = ost.api_error_getting_recipe_details_status()
         output_status.details.data = user_recipes_service_status.details.data
+        log.error(output_status.details.description)
     else:
         specific_recipe = recipe_service_status.details.data['recipe']
         user_recipes = user_recipes_service_status.details.data['user_recipes']
@@ -346,17 +352,108 @@ def get_recipe_details(
 
     return JSONResponse(content=output_status.model_dump(), status_code=status_code)
 
-
 # ==================================================================================================
-@app.get('/tst')
-def test(token: Annotated[str, Depends(oauth2_scheme)]) -> JSONResponse:
-    """Example endpoint using JWT OAuth2 authentication."""
+#  Purchasing functionality
+# ==================================================================================================
+@app.post('/buy-recipe/{recipe_id}')
+def buy_recipe(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    recipe_id: str,
+    encr_payment_info: sch.PaymentEncrInfo,
+) -> JSONResponse:
+    """Send encrypted payment information to buy the recipe."""
     token_status = srv.handle_token(token=token)
     if token_status.status in ('invalid_token', 'expired_token'):
         return JSONResponse(
             content=token_status.model_dump(),
             status_code=status.HTTP_400_BAD_REQUEST
         )
-    token_status.status = 'ok'
-    token_status.details.description = 'Test was well.'
-    return JSONResponse(content=token_status.model_dump(), status_code=status.HTTP_201_CREATED)
+    user_id = token_status.details.data.get('sub', '')
+
+    checkout_status = srv.start_checkout(
+        user_id=user_id,
+        recipe_id=recipe_id,
+        payment_encr_info=encr_payment_info.encr_info
+    )
+
+    if checkout_status.error:
+        output_status = checkout_status
+        status_code = checkout_status.details.error_code or status.HTTP_422_UNPROCESSABLE_ENTITY
+        log.error(output_status.details.description)
+    else:
+        output_status = ost.api_buy_recipe_status()
+        status_code = status.HTTP_201_CREATED
+
+    return JSONResponse(content=output_status.model_dump(), status_code=status_code)
+
+@app.post('/payment-webhook/{checkout_id}')
+def payment_webhook(
+    checkout_id: str,
+    webhook_payment_info: sch.WebhookPaymentInfo,
+) -> JSONResponse:
+    """Receive payment status notification from payment provider."""
+
+    process_payment_status = srv.process_payment(
+        checkout_id=checkout_id,
+        webhook_payment_info=webhook_payment_info,
+    )
+
+    if process_payment_status.error:
+        output_status = process_payment_status
+        status_code = (
+            process_payment_status.details.error_code or status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        log.error(output_status.details.description)
+    else:
+        output_status = ost.api_payment_webhook_status()
+        status_code = status.HTTP_202_ACCEPTED
+
+    return JSONResponse(content=output_status.model_dump(), status_code=status_code)
+
+
+
+# ==================================================================================================
+#  Payment Provider Simulator
+# ==================================================================================================
+@app.post('/create-checkout/{recipe_id}')
+def create_checkout(
+    recipe_id: str,
+    payment_checkout_info: sch.PaymentCheckoutInfo,
+) -> JSONResponse:
+    """Simulate the Payment provider endpoint that accepts checkout requisitions."""
+    api_key = payment_checkout_info.api_key
+    if api_key == config.PAYMENT_PROVIDER_API_KEY:
+        checkout_id = str(uuid4())
+
+        try:
+            payment_info = sch.PaymentCcInfo.decrypt(
+                payment_checkout_info.payment_encr_info.encr_info
+            )
+            # Use `payment_info` to charge the credit card through an operator.
+            payment_info # ...
+
+            payment_process_status = srv.payment_processing(
+                checkout_id=checkout_id,
+                recipe_id=recipe_id
+            )
+
+            if payment_process_status.error:
+                output_status = payment_process_status
+                status_code = (
+                    payment_process_status.details.error_code or
+                    status.HTTP_422_UNPROCESSABLE_ENTITY
+                )
+            else:
+                output_status = ost.pprovider_create_checkout_status()
+                output_status.details.data = {'checkout_id': checkout_id}
+                status_code = status.HTTP_201_CREATED
+        except (ValidationError, InvalidToken) as err:
+            output_status = ost.pprovider_payment_info_error_status()
+            if hasattr(err, 'errors'):
+                output_status.details.data = {'errors': err.errors()}
+            status_code = status.HTTP_400_BAD_REQUEST
+    else:
+        output_status = ost.pprovider_api_key_error_status()
+        status_code = status.HTTP_401_UNAUTHORIZED
+
+    return JSONResponse(content=output_status.model_dump(), status_code=status_code)

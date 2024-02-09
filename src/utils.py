@@ -10,6 +10,7 @@ from functools import reduce
 from typing import Any
 
 import bcrypt
+from cryptography.fernet import Fernet
 from jose import jwt
 from pydantic import JsonValue, SecretStr
 
@@ -141,3 +142,16 @@ def slugify(text: str, separator: str = '-') -> str:
     """Transform the text into a slug, removing unicode, accents and special characters."""
     normalized_text = remove_punctuation(remove_unicode_and_accents(text.replace('-', ' '))).lower()
     return separator.join(normalized_text.split())
+
+# --------------------------------------------------------------------------------------------------
+#   Encryption / decryption
+# --------------------------------------------------------------------------------------------------
+def encr_data(data: str, key: bytes) -> bytes:
+    """Encrypt data using a key."""
+    crypt_func = Fernet(key)
+    return crypt_func.encrypt(data.encode(config.APP_ENCODING_FORMAT))
+
+def decr_data(data: bytes, key: bytes) -> str:
+    """Decrypt encrypted data using a key."""
+    crypt_func = Fernet(key)
+    return crypt_func.decrypt(data).decode(config.APP_ENCODING_FORMAT)

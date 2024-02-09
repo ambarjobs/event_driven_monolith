@@ -63,6 +63,9 @@ class TestCore:
                     credentials=db.admin_credentials,
                 )
 
+    # ----------------------------------------------------------------------------------------------
+    #   `start_consumers()` function
+    # ----------------------------------------------------------------------------------------------
     def test_start_consumers__general_case(self) -> None:
         test_subscription = ps.Subscription(topic_name='test_topic', consumer_service_name='email_confirmation')
         subscriptions = (test_subscription,)
@@ -100,6 +103,9 @@ class TestCore:
         with pytest.raises(ConsumerServiceNotFoundError):
             core.start_consumers(subscriptions=subscriptions)
 
+    # ----------------------------------------------------------------------------------------------
+    #   `create_admin_user()` function
+    # ----------------------------------------------------------------------------------------------
     def test_create_admin_user__general_case(
         self,
         test_db: Db,
