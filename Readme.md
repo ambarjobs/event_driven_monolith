@@ -84,9 +84,9 @@ Below there are the main parts of the project with indication of what has been i
     [x] Email confirmation
     [x] Recipes importing
     [x] Basic platform operation
-    [ ] Basic purchase mechanism
-    [ ] Payment provider simulator
-    [ ] User purchase notifications
+    [x] Basic purchase mechanism
+    [x] Payment provider simulator
+    [ ] Purchasing notifications
     [ ] Documentation/PoC analysis
 
 ## Installing the project
