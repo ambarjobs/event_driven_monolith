@@ -1578,10 +1578,10 @@ class TestPurchasingApi:
         payment_status: int,
     ) -> None:
         with mock.patch(
-            target='services.process_payment',
+            target='services.update_payment_status',
             autospec=True
-        ) as mock_process_payment:
-            mock_process_payment.return_value = ost.process_payment_status()
+        ) as mock_update_payment_status:
+            mock_update_payment_status.return_value = ost.update_payment_status_status()
 
             body = {
                 'recipe_id': recipe.id,
@@ -1601,7 +1601,7 @@ class TestPurchasingApi:
 
             assert payment_webhook_response_json == expected_status.model_dump()
 
-    def test_payment_webhook__process_payment_error(
+    def test_payment_webhook__update_payment_status_error(
         self,
         recipe: sch.Recipe,
         checkout_id: str,
@@ -1609,10 +1609,10 @@ class TestPurchasingApi:
         payment_status: int,
     ) -> None:
         with mock.patch(
-            target='services.process_payment',
+            target='services.update_payment_status',
             autospec=True
-        ) as mock_process_payment:
-            mock_process_payment.return_value = ost.process_payment_checkout_not_found_status()
+        ) as mock_update_payment_status:
+            mock_update_payment_status.return_value = ost.update_payment_status_checkout_not_found_status()
 
             body = {
                 'recipe_id': recipe.id,
@@ -1628,7 +1628,7 @@ class TestPurchasingApi:
 
             payment_webhook_response_json = payment_webhook_response.json()
 
-            expected_status = ost.process_payment_checkout_not_found_status()
+            expected_status = ost.update_payment_status_checkout_not_found_status()
 
             assert payment_webhook_response_json == expected_status.model_dump()
 

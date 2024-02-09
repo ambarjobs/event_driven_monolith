@@ -1311,9 +1311,9 @@ class TestPurchasingServices:
 
             assert checkout_status == test_create_checkout_status
     # ----------------------------------------------------------------------------------------------
-    #   `process_payment` service
+    #   `update_payment_status` service
     # ----------------------------------------------------------------------------------------------
-    def test_process_payment__general_case(
+    def test_update_payment_status__general_case(
         self,
         test_db: Db,
         user_id: str,
@@ -1336,7 +1336,7 @@ class TestPurchasingServices:
         payment_db.create_document(document_id=checkout_id, body={'user_id': user_id})
 
         with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
-            process_payment_status = srv.process_payment(
+            update_payment_status_status = srv.update_payment_status(
                 checkout_id=checkout_id,
                 webhook_payment_info=webhook_payment_info
             )
@@ -1357,9 +1357,9 @@ class TestPurchasingServices:
 
             mock_publish.assert_called_with(topic='purchase-status-changed', message=message)
 
-            assert process_payment_status == ost.process_payment_status()
+            assert update_payment_status_status == ost.update_payment_status_status()
 
-    def test_process_payment__checkout_not_found(
+    def test_update_payment_status__checkout_not_found(
         self,
         test_db: Db,
         user_id: str,
@@ -1380,7 +1380,7 @@ class TestPurchasingServices:
         )
 
         with mock.patch(target='pubsub.PubSub.publish') as mock_publish:
-            process_payment_status = srv.process_payment(
+            update_payment_status_status = srv.update_payment_status(
                 checkout_id=checkout_id,
                 webhook_payment_info=webhook_payment_info
             )
@@ -1391,7 +1391,10 @@ class TestPurchasingServices:
 
             mock_publish.assert_not_called()
 
-            assert process_payment_status == ost.process_payment_checkout_not_found_status()
+            assert (
+                update_payment_status_status ==
+                ost.update_payment_status_checkout_not_found_status()
+            )
 
 # ==================================================================================================
 #   Payment Provider Simulator functionality
@@ -1463,7 +1466,7 @@ class TestPaymentProviderSimulator:
                     # Avoiding a long line.
                     mock_call = mock_payment_webhook_post.return_value.raise_for_status.return_value
                     mock_call.json.return_value = (
-                        ost.process_payment_checkout_not_found_status().model_dump()
+                        ost.update_payment_status_checkout_not_found_status().model_dump()
                     )
 
                     payment_processing_status = srv.payment_processing(

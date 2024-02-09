@@ -499,7 +499,7 @@ def start_checkout(user_id: str, recipe_id: str, payment_encr_info: bytes) -> sc
 
     return ost.start_checkout_status()
 
-def process_payment(
+def update_payment_status(
     checkout_id: str,
     webhook_payment_info: sch.WebhookPaymentInfo
 ) -> sch.OutputStatus:
@@ -510,7 +510,7 @@ def process_payment(
             document_id=checkout_id
         )
     except httpx.HTTPStatusError:
-        output_status = ost.process_payment_checkout_not_found_status()
+        output_status = ost.update_payment_status_checkout_not_found_status()
         log.error(msg=output_status.details.description)
         return output_status
 
@@ -525,20 +525,20 @@ def process_payment(
         fields=db_fields
     )
 
-    process_payment_producer = ps.PubSub()
+    update_payment_status_producer = ps.PubSub()
     message = sch.PurchaseStatusInfo(
         user_id=user_id,
         recipe_id=webhook_payment_info.recipe_id,
         payment_status=webhook_payment_info.payment_status,
     ).model_dump_json()
-    process_payment_producer.publish(topic='purchase-status-changed', message=message)
+    update_payment_status_producer.publish(topic='purchase-status-changed', message=message)
 
     log.info(
         f'Payment status of [{webhook_payment_info.payment_id}] changed'
         f' to {webhook_payment_info.payment_status}'
     )
 
-    return ost.process_payment_status()
+    return ost.update_payment_status_status()
 
 # --------------------------------------------------------------------------------------------------
 #   Payment Provider Simulator

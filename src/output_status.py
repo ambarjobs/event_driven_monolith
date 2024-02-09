@@ -246,9 +246,9 @@ def error_retrieving_specific_recipe_status() -> sch.OutputStatus:
     )
 
 # ----------------------------------------------------------------------------------------------
-#   `process_payment` output status
+#   `update_payment_status` output status
 # ----------------------------------------------------------------------------------------------
-def process_payment_status() -> sch.OutputStatus:
+def update_payment_status_status() -> sch.OutputStatus:
     return sch.OutputStatus(
         status='specific_recipe_retrieved',
         error=False,
@@ -257,9 +257,9 @@ def process_payment_status() -> sch.OutputStatus:
         ),
     )
 
-def process_payment_checkout_not_found_status() -> sch.OutputStatus:
+def update_payment_status_checkout_not_found_status() -> sch.OutputStatus:
     return sch.OutputStatus(
-        status='process_payment_checkout_not_found',
+        status='update_payment_status_checkout_not_found',
         error=True,
         details=sch.StatusDetails(
             description='The `checkout_id` sent by payment provider was not found in database.'

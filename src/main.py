@@ -393,15 +393,15 @@ def payment_webhook(
 ) -> JSONResponse:
     """Receive payment status notification from payment provider."""
 
-    process_payment_status = srv.process_payment(
+    update_payment_status_status = srv.update_payment_status(
         checkout_id=checkout_id,
         webhook_payment_info=webhook_payment_info,
     )
 
-    if process_payment_status.error:
-        output_status = process_payment_status
+    if update_payment_status_status.error:
+        output_status = update_payment_status_status
         status_code = (
-            process_payment_status.details.error_code or status.HTTP_422_UNPROCESSABLE_ENTITY
+            update_payment_status_status.details.error_code or status.HTTP_422_UNPROCESSABLE_ENTITY
         )
         log.error(output_status.details.description)
     else:
