@@ -13,6 +13,7 @@ from pydantic import (
     computed_field,
     EmailStr,
     Field,
+    JsonValue,
     SecretStr,
 )
 from pydantic_extra_types.payment import PaymentCardNumber
@@ -48,7 +49,7 @@ MAX_CC_INSTALLMENTS = 12
 PAYMENT_PROVIDER_API_KEY_LENGTH = 64
 
 # --------------------------------------------------------------------------------------------------
-#   Output status
+#   Base output status
 # --------------------------------------------------------------------------------------------------
 class StatusDetails(BaseModel):
     """Service status details schema."""
@@ -69,7 +70,7 @@ class OutputStatus(BaseModel):
 
 
 # --------------------------------------------------------------------------------------------------
-#   User
+#   Authentication functionality
 # --------------------------------------------------------------------------------------------------
 class UserCredentials(BaseModel):
     """User credentials schema (used for login and sign up)."""
@@ -86,7 +87,7 @@ class UserInfo(BaseModel):
 
 
 # --------------------------------------------------------------------------------------------------
-#   Email confirmation
+#   Email confirmation functionality
 # --------------------------------------------------------------------------------------------------
 class EmailConfirmationInfo(BaseModel):
     """User information used for email confirmation."""
@@ -108,7 +109,7 @@ class EmailConfirmationToken(BaseModel):
 
 
 # --------------------------------------------------------------------------------------------------
-#   Recipes
+#   Recipes functionality
 # --------------------------------------------------------------------------------------------------
 def no_empty_list(value: list[str]) -> list:
     """Validate the list field is not empty."""
@@ -184,7 +185,7 @@ class UserRecipe(BaseModel):
 
 
 # --------------------------------------------------------------------------------------------------
-#   Purchasing
+#   Purchasing functionality
 # --------------------------------------------------------------------------------------------------
 class PaymentStatus(IntEnum):
     """Payment status"""
@@ -251,3 +252,20 @@ class WebhookPaymentInfo(BaseModel):
     recipe_id: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
     payment_id: str = Field(min_length=UUID4_SIZE, max_length=UUID4_SIZE)
     payment_status: PaymentStatus
+
+
+# --------------------------------------------------------------------------------------------------
+#   Events handling functionality
+# --------------------------------------------------------------------------------------------------
+class Notification(BaseModel):
+    """General notification message for using with SSE (Server Sent Events) push events."""
+    event_name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    user_id: EmailStr
+    data: JsonValue
+
+
+class RecipePurchaseRequestInfo(BaseModel):
+    """Information about recipe purchase request."""
+    user_name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    recipe_id: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    recipe_name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)

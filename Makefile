@@ -67,7 +67,9 @@ remove: ## Remove all containers and wipe all data
 # --------------------------------------------------------------------------------------------------
 .PHONY: restart
 restart: ## Restart all containers
-	@docker-compose restart
+	@docker-compose stop
+	@sleep 3
+	@docker-compose up -d
 
 .DEFAULT_GOAL := help
 

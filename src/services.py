@@ -1,13 +1,16 @@
 # ==================================================================================================
 #  Application services
 # ==================================================================================================
+import asyncio
 import csv
 import io
+import queue
 import random
 import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta, UTC
-from typing import Any, BinaryIO
+from typing import Any, AsyncIterator, BinaryIO, Iterator
 
 import httpx
 from fastapi import status
@@ -15,6 +18,7 @@ from jose import ExpiredSignatureError, JWTError
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from pydantic import JsonValue, ValidationError
+from sse_starlette.sse import ServerSentEvent
 
 import config
 import pubsub as ps
@@ -32,7 +36,43 @@ MAX_MINUTES_PROCESSING_PAYMENT = 5
 CONSUMERS_SUBSCRIPTIONS = (
     ps.Subscription(topic_name='user-signed-up', consumer_service_name='email_confirmation'),
     ps.Subscription(topic_name='email-confirmed', consumer_service_name='enable_user'),
+    ps.Subscription(
+        topic_name='recipe-purchase-requested',
+        consumer_service_name='send_purchase_notification'
+    ),
 )
+
+
+# TODO: Substitute with something using CouchDB instead of `queue.SimpleQueue` for scalability.
+class NotificationEventsManager:
+    """Manages notification event queues mapped for each user."""
+
+    def __init__(self):
+        self.users_mapping = defaultdict(queue.SimpleQueue)
+
+    def put(self, user_id: str, data: JsonValue) -> None:
+        """Enqueue data on specific `user_id` queue."""
+        queue = self.users_mapping[user_id]
+        queue.put(ServerSentEvent(data=data))
+
+    def get(self, user_id: str) -> ServerSentEvent | None:
+        """Dequeue data from specific `user_id` queue."""
+        queue = self.users_mapping.get(user_id)
+        if queue is None or queue.empty():
+            return None
+        return queue.get_nowait()
+
+    async def generate(self, user_id: str) -> AsyncIterator[ServerSentEvent]:
+        """Async generator that provides notification data to SSE on `notifications` endpoint"""
+        while True:
+            next_notification_event = self.get(user_id=user_id)
+            if next_notification_event:
+                yield next_notification_event
+            await asyncio.sleep(1)
+
+
+notification_manager = NotificationEventsManager()
+
 
 # ==================================================================================================
 #   Generic functions
@@ -164,6 +204,23 @@ def authentication(credentials: sch.UserCredentials) -> sch.OutputStatus:
 
     output_status = ost.successful_logged_in_status()
     output_status.details.data = {'token': access_token}
+    return output_status
+
+def get_user_info(user_id: str) -> sch.OutputStatus:
+    """Return user info stored in `user-info` database."""
+    try:
+        db_user_info = db.get_document_by_id(
+            database_name=config.USER_INFO_DB_NAME,
+            document_id=user_id
+        )
+    except httpx.HTTPStatusError as err:
+        if err.response.status_code == status.HTTP_404_NOT_FOUND:
+            # User not found
+            return ost.user_info_not_found_status()
+        return ost.http_error_status(error=err)
+
+    output_status = ost.get_user_info_status()
+    output_status.details.data = db_user_info
     return output_status
 
 # --------------------------------------------------------------------------------------------------
@@ -540,6 +597,7 @@ def update_payment_status(
 
     return ost.update_payment_status_status()
 
+
 # --------------------------------------------------------------------------------------------------
 #   Payment Provider Simulator
 # --------------------------------------------------------------------------------------------------
@@ -584,3 +642,65 @@ def payment_processing(checkout_id: str, recipe_id: str) -> sch.OutputStatus:
     except httpx.HTTPStatusError as err:
         return ost.http_error_status(error=err)
     return ost.payment_processing_status()
+
+
+# --------------------------------------------------------------------------------------------------
+#   Events handling functionality
+# --------------------------------------------------------------------------------------------------
+def error_response_generator(output_status: sch.OutputStatus) -> Iterator[ServerSentEvent]:
+    """Generator to deliver an error response content through SSE."""
+    yield ServerSentEvent(data=output_status.model_dump())
+
+def send_purchase_notification(
+    channel: BlockingChannel,
+    method: Basic.Deliver,
+    properties: BasicProperties,
+    body: bytes
+) -> None:
+    """Send notification by SSE about a recipe purchased currently."""
+    recipe_purchase_info = sch.RecipePurchaseInfo.model_validate_json(body)
+
+    all_recipes_status = get_all_recipes()
+    if all_recipes_status.error:
+        notification = sch.Notification(
+            event_name='error',
+            user_id=recipe_purchase_info.user_id,
+            data=all_recipes_status.details.data
+        )
+        return
+        # yield notification.model_dump()
+
+    all_recipes = utils.deep_traversal(all_recipes_status.details.data, 'all_recipes')
+    purchased_recipe = utils.first(
+        seq=[recipe for recipe in all_recipes if recipe.id == recipe_purchase_info.recipe_id]
+    )
+    if not purchased_recipe:
+        notification = sch.Notification(
+            event_name='error',
+            user_id=recipe_purchase_info.user_id,
+            data={'errors': ['recipe not found']}
+        )
+        return
+        # yield notification.model_dump()
+
+    user_info_status = get_user_info(user_id=recipe_purchase_info.user_id)
+    user_info = user_info_status.details.data
+
+    notification_info = sch.RecipePurchaseRequestInfo(
+        user_name=user_info.get('name', ''),
+        recipe_id=purchased_recipe.id,
+        recipe_name=purchased_recipe.summary.name
+    )
+
+    notification = sch.Notification(
+        event_name='recipe-purchase-requested',
+        user_id=recipe_purchase_info.user_id,
+        data=notification_info.model_dump()
+    )
+
+    notification_manager.put(user_id=recipe_purchase_info.user_id, data=notification.model_dump())
+
+    # On tests there is no channel or method because the parameters are mocked
+    if channel:
+        # Acknowledging the message.
+        channel.basic_ack(delivery_tag=method.delivery_tag)

@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, Request, status, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import SecretStr, ValidationError
+from sse_starlette.sse import EventSourceResponse
 
 import config
 import core
@@ -410,8 +411,6 @@ def payment_webhook(
 
     return JSONResponse(content=output_status.model_dump(), status_code=status_code)
 
-
-
 # ==================================================================================================
 #  Payment Provider Simulator
 # ==================================================================================================
@@ -457,3 +456,21 @@ def create_checkout(
         status_code = status.HTTP_401_UNAUTHORIZED
 
     return JSONResponse(content=output_status.model_dump(), status_code=status_code)
+
+# ==================================================================================================
+#  Events handling functionality
+# ==================================================================================================
+@app.get('/notifications')
+async def notifications(
+    token: Annotated[str, Depends(oauth2_scheme)]
+) -> EventSourceResponse:
+    """Server Side Events endpoint to push recipe purchase status notifications."""
+    token_status = srv.handle_token(token=token)
+    if token_status.status in ('invalid_token', 'expired_token'):
+        return EventSourceResponse(
+            content=srv.error_response_generator(output_status=token_status),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    user_id = token_status.details.data.get('sub', '')
+
+    return EventSourceResponse(content=srv.notification_manager.generate(user_id=user_id))
