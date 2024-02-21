@@ -458,7 +458,7 @@ def create_checkout(
     return JSONResponse(content=output_status.model_dump(), status_code=status_code)
 
 # ==================================================================================================
-#  Events handling functionality
+#  Purchase events handling functionality
 # ==================================================================================================
 @app.get('/notifications')
 async def notifications(
@@ -473,4 +473,4 @@ async def notifications(
         )
     user_id = token_status.details.data.get('sub', '')
 
-    return EventSourceResponse(content=srv.notification_manager.generate(user_id=user_id))
+    return EventSourceResponse(content=srv.notifications_manager.generate(user_id=user_id))

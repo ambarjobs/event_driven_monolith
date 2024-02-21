@@ -4,6 +4,7 @@
 import asyncio
 import csv
 import io
+import json
 import queue
 import random
 import time
@@ -53,7 +54,7 @@ class NotificationEventsManager:
     def put(self, user_id: str, data: JsonValue) -> None:
         """Enqueue data on specific `user_id` queue."""
         queue = self.users_mapping[user_id]
-        queue.put(ServerSentEvent(data=data))
+        queue.put(ServerSentEvent(data=json.dumps(data)))
 
     def get(self, user_id: str) -> ServerSentEvent | None:
         """Dequeue data from specific `user_id` queue."""
@@ -71,7 +72,7 @@ class NotificationEventsManager:
             await asyncio.sleep(1)
 
 
-notification_manager = NotificationEventsManager()
+notifications_manager = NotificationEventsManager()
 
 
 # ==================================================================================================
@@ -645,11 +646,11 @@ def payment_processing(checkout_id: str, recipe_id: str) -> sch.OutputStatus:
 
 
 # --------------------------------------------------------------------------------------------------
-#   Events handling functionality
+#   Purchase events handling functionality
 # --------------------------------------------------------------------------------------------------
 def error_response_generator(output_status: sch.OutputStatus) -> Iterator[ServerSentEvent]:
     """Generator to deliver an error response content through SSE."""
-    yield ServerSentEvent(data=output_status.model_dump())
+    yield ServerSentEvent(data=json.dumps(output_status.model_dump()))
 
 def send_purchase_notification(
     channel: BlockingChannel,
@@ -668,7 +669,6 @@ def send_purchase_notification(
             data=all_recipes_status.details.data
         )
         return
-        # yield notification.model_dump()
 
     all_recipes = utils.deep_traversal(all_recipes_status.details.data, 'all_recipes')
     purchased_recipe = utils.first(
@@ -681,7 +681,6 @@ def send_purchase_notification(
             data={'errors': ['recipe not found']}
         )
         return
-        # yield notification.model_dump()
 
     user_info_status = get_user_info(user_id=recipe_purchase_info.user_id)
     user_info = user_info_status.details.data
@@ -698,7 +697,7 @@ def send_purchase_notification(
         data=notification_info.model_dump()
     )
 
-    notification_manager.put(user_id=recipe_purchase_info.user_id, data=notification.model_dump())
+    notifications_manager.put(user_id=recipe_purchase_info.user_id, data=notification.model_dump())
 
     # On tests there is no channel or method because the parameters are mocked
     if channel:

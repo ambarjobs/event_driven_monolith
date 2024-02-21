@@ -11,8 +11,10 @@ from pika.spec import Basic, BasicProperties
 from pydantic import SecretStr
 
 import config
+import output_status as ost
 import pubsub as ps
 import schemas as sch
+import services as srv
 import utils
 from database import DbCredentials
 from tests.helpers import Db
@@ -236,6 +238,20 @@ def email_confirmation_info(
     return sch.EmailConfirmationInfo(user_id=user_id, user_name=user_name, base_url=base_url)
 
 
+@pytest.fixture
+def user_info_status(user_info: sch.UserInfo) -> sch.OutputStatus:
+    """Return an output status with user info inside."""
+    output_status = ost.get_user_info_status()
+    output_status.details.data = {
+        '_id': user_info.id,
+        '_rev': '1-ee4accf3657d300155b9228a21f75000',
+        'name': user_info.name,
+        'phone_number': user_info.phone_number,
+        'address': user_info.address,
+    }
+    return output_status
+
+
 # --------------------------------------------------------------------------------------------------
 #   Recipes
 # --------------------------------------------------------------------------------------------------
@@ -356,6 +372,21 @@ def one_more_recipe(one_more_recipe_csv_data: dict[str, Any]) -> sch.Recipe:
     """Return one more Recipe."""
     return csv_data_to_recipe(recipe_csv_data=one_more_recipe_csv_data)
 
+
+@pytest.fixture
+def all_recipes_status(
+    recipe: sch.Recipe,
+    another_recipe: sch.Recipe,
+    one_more_recipe: sch.Recipe
+) -> sch.OutputStatus:
+    """Return a list of all recipes."""
+    output_status = ost.all_recipes_status()
+    output_status.details.data = {
+        'all_recipes': [recipe, another_recipe, one_more_recipe]
+    }
+    return output_status
+
+
 # --------------------------------------------------------------------------------------------------
 #   Purchasing
 # --------------------------------------------------------------------------------------------------
@@ -392,3 +423,20 @@ def payment_id() -> str:
 def payment_status() -> int:
     """Return a payment status."""
     return sch.PaymentStatus.PAID
+
+@pytest.fixture
+def recipe_purchase_info(
+    user_id: str,
+    recipe: sch.Recipe,
+) -> sch.RecipePurchaseInfo:
+    """Return an `RecipePurchaseInfo` structure."""
+    return sch.RecipePurchaseInfo(user_id=user_id, recipe_id=recipe.id)
+
+
+# --------------------------------------------------------------------------------------------------
+#   Purchase events handling
+# --------------------------------------------------------------------------------------------------
+@pytest.fixture
+def notifications_manager() -> srv.NotificationEventsManager:
+    """A copy of the app's notification events manager."""
+    return srv.NotificationEventsManager()

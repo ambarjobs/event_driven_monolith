@@ -1,15 +1,19 @@
 # ==================================================================================================
 #  Main module tests
 # ==================================================================================================
+import asyncio
 import io
+import json
 from copy import deepcopy
 from datetime import datetime, timedelta, UTC
 from unittest import mock
 
 import bcrypt
+import httpx
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
+from sse_starlette.sse import ServerSentEvent
 
 import config
 import output_status as ost
@@ -1780,3 +1784,90 @@ class TestPaymentProviderSimulatorApi:
                 expected_status = ost.pprovider_api_key_error_status()
 
                 assert create_checkout_response_json == expected_status.model_dump()
+
+
+# ==================================================================================================
+#   Purchase events handling functionality
+# ==================================================================================================
+class TestPurchaseEventsHandlingApi:
+    # ----------------------------------------------------------------------------------------------
+    #   `/notifications` endpoint test
+    # ----------------------------------------------------------------------------------------------
+    @pytest.mark.asyncio
+    async def __test_notifications__general_case(
+        self,
+        user_id: str,
+        general_data: dict,
+        notifications_manager: srv.NotificationEventsManager,
+    ) -> None:
+        payload = {'sub': user_id}
+        token = utils.create_token(payload=payload)
+
+        with mock.patch(target='services.notifications_manager', new=notifications_manager):
+            notifications_manager.put(user_id=user_id, data=general_data)
+            async with httpx.AsyncClient(base_url='http://localhost', timeout=20) as client:
+                async with client.stream(
+                    method='GET',
+                    url='/notifications',
+                    headers={'Authorization': f'Bearer {token}'}
+                ) as response:
+                    content_iterator = response.aiter_lines()
+                    content = await anext(content_iterator)
+                    prefix = 'data: '
+                    data = json.loads(content[len(prefix):])
+
+                    assert data == general_data
+
+    @pytest.mark.asyncio
+    async def _test_notifications__general_case(
+        self,
+        user_id: str,
+        general_data: dict,
+    ) -> None:
+        async def test_generator(user_id: str = ''):
+            while True:
+                yield ServerSentEvent(data=general_data)
+                await asyncio.sleep(1)
+
+        payload = {'sub': user_id}
+        token = utils.create_token(payload=payload)
+
+        with mock.patch(target='services.notifications_manager.generate') as mock_generate:
+            mock_generate.return_value = test_generator()
+            async with httpx.AsyncClient(base_url='http://localhost', timeout=20) as client:
+                async with client.stream(
+                    method='GET',
+                    url='/notifications',
+                    headers={'Authorization': f'Bearer {token}'}
+                ) as response:
+                    content_iterator = response.aiter_lines()
+                    content = await anext(content_iterator)
+                    prefix = 'data: '
+                    data = json.loads(content[len(prefix):])
+
+                    assert data == general_data
+
+    @pytest.mark.asyncio
+    async def test_notifications__invalid_token(
+        self,
+        user_id: str,
+    ) -> None:
+        payload = {'sub': user_id}
+        token = utils.create_token(payload=payload)[:-1]
+
+        async with httpx.AsyncClient(base_url='http://localhost', timeout=20) as client:
+            async with client.stream(
+                method='GET',
+                url='/notifications',
+                headers={'Authorization': f'Bearer {token}'}
+            ) as response:
+                assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+                content_iterator = response.aiter_text()
+                content = await anext(content_iterator)
+                prefix = 'data: '
+                data = json.loads(content[len(prefix):])
+
+                assert data['status'] == 'invalid_token'
+                assert data['error'] is True
+                assert utils.deep_traversal(data, 'details', 'description') == 'Invalid token: Signature verification failed.'

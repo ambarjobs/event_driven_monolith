@@ -3,6 +3,7 @@
 # ==================================================================================================
 import io
 import json
+import queue
 from datetime import datetime, timedelta, UTC
 from typing import Any
 from unittest import mock
@@ -406,6 +407,53 @@ class TestAuthenticationServices:
                 utils.deep_traversal(credentials_data, 'last_login')
             ) - before_login > timedelta(seconds=0)
         )
+
+    # ----------------------------------------------------------------------------------------------
+    #   `get_user_info` service
+    # ----------------------------------------------------------------------------------------------
+    def test_get_user_info__general_case(
+        self,
+        test_db: Db,
+        user_info: sch.UserInfo,
+    ) -> None:
+        user_info_db = test_db
+        user_info_db.database_name = config.USER_INFO_DB_NAME
+
+        user_info_db.create()
+        user_info_db.add_permissions()
+
+        body = utils.clear_nulls(user_info.model_dump(exclude={'id'}))
+        user_info_db.create_document(document_id=user_info.id, body=body)
+
+        user_info_status = srv.get_user_info(user_id=user_info.id)
+
+        assert user_info_status.status == 'user_info'
+        assert user_info_status.error is False
+        assert user_info_status.details.description == 'User information.'
+        assert user_info_status.details.data.get('_id') == user_info.id
+        assert user_info_status.details.data.get('name') == user_info.name
+        assert user_info_status.details.data.get('address') == user_info.address
+        assert user_info_status.details.data.get('phone_number') is None
+
+    def test_get_user_info__inexistent_user(
+        self,
+        test_db: Db,
+        user_info: sch.UserInfo,
+    ) -> None:
+        user_info_db = test_db
+        user_info_db.database_name = config.USER_INFO_DB_NAME
+
+        user_info_db.create()
+        user_info_db.add_permissions()
+
+        body = utils.clear_nulls(user_info.model_dump(exclude={'id'}))
+        user_info_db.create_document(document_id=user_info.id, body=body)
+
+        user_info_status = srv.get_user_info(user_id='inexistent user id')
+
+        assert user_info_status.status == 'user_info_not_found'
+        assert user_info_status.error is True
+        assert user_info_status.details.description == 'User or user information not found.'
 
 
 # ==================================================================================================
@@ -1535,3 +1583,159 @@ class TestPaymentProviderSimulator:
                     assert payment_processing_status == ost.http_error_status(
                         error=payment_webhook_http_error
                     )
+
+
+# ==================================================================================================
+#   Purchase events handling functionality
+# ==================================================================================================
+class TestPurchaseEventsHandling:
+    # ----------------------------------------------------------------------------------------------
+    #   `NotificationEventsManager` class
+    # ----------------------------------------------------------------------------------------------
+    def test_notification_events_manager__general_case(
+        self,
+        user_id: str,
+        general_data: dict,
+        notifications_manager: srv.NotificationEventsManager
+    ) -> None:
+        assert notifications_manager.users_mapping == {}
+
+        notifications_manager.put(user_id=user_id, data=general_data)
+        assert user_id in notifications_manager.users_mapping
+        assert 'inexistent_user' not in notifications_manager.users_mapping
+
+        user_queue =  notifications_manager.users_mapping[user_id]
+        assert isinstance(user_queue, queue.SimpleQueue)
+        assert not user_queue.empty()
+
+        user_sse = notifications_manager.get(user_id=user_id)
+        user_sse_data = json.loads(user_sse.data)
+
+        assert user_sse_data['some_key'] == 'some_value'
+        assert user_sse_data['another_key'] is None
+        assert user_sse_data['yet_another_key'] == 123
+        assert user_sse_data['321'] is None
+
+        assert user_queue.empty()
+        assert notifications_manager.get(user_id=user_id) is None
+
+    @pytest.mark.asyncio
+    async def test_notification_events_manager__generate(
+        self,
+        user_id: str,
+        general_data: dict,
+        notifications_manager: srv.NotificationEventsManager
+    ) -> None:
+        notifications_manager.put(user_id=user_id, data=general_data)
+
+        notification_generator = notifications_manager.generate(user_id=user_id)
+
+        user_sse = await anext(notification_generator)
+        user_sse_data = json.loads(user_sse.data)
+
+        assert user_sse_data['some_key'] == 'some_value'
+        assert user_sse_data['another_key'] is None
+        assert user_sse_data['yet_another_key'] == 123
+        assert user_sse_data['321'] is None
+
+    # ----------------------------------------------------------------------------------------------
+    #   `error_response_generator`
+    # ----------------------------------------------------------------------------------------------
+    def test_error_response_generator__general_case(self) -> None:
+        test_output_status = ost.invalid_token_status()
+        error_event = next(srv.error_response_generator(output_status=test_output_status))
+
+        assert json.loads(error_event.data) == test_output_status.model_dump()
+
+        new_error_event = next(srv.error_response_generator(output_status=test_output_status))
+
+        assert json.loads(new_error_event.data) == test_output_status.model_dump()
+
+    # ----------------------------------------------------------------------------------------------
+    #   `send_purchase_notification` consumer service
+    # ----------------------------------------------------------------------------------------------
+    def test_send_purchase_notification__general_case(
+        self,
+        callback_null_params,
+        recipe: sch.Recipe,
+        all_recipes_status: sch.OutputStatus,
+        user_info_status: sch.OutputStatus,
+        recipe_purchase_info: sch.RecipePurchaseInfo,
+        notifications_manager: srv.NotificationEventsManager,
+    ) -> None:
+        serialized_recipe_purchase_info = recipe_purchase_info.model_dump_json()
+
+        with mock.patch(target='services.notifications_manager', new=notifications_manager):
+            with mock.patch(target='services.get_all_recipes') as mock_all_recipes:
+                mock_all_recipes.return_value = all_recipes_status
+                with mock.patch(target='services.get_user_info') as mock_user_info:
+                    mock_user_info.return_value = user_info_status
+
+                    srv.send_purchase_notification(
+                        **callback_null_params,
+                        body=serialized_recipe_purchase_info
+                    )
+
+                    user_id = recipe_purchase_info.user_id
+                    recipe_id = recipe_purchase_info.recipe_id
+                    assert user_id in srv.notifications_manager.users_mapping
+
+                    user_queue = srv.notifications_manager.users_mapping[user_id]
+                    assert isinstance(user_queue, queue.SimpleQueue)
+                    assert not user_queue.empty()
+
+                    notification = json.loads(user_queue.get_nowait().data)
+                    assert notification['event_name'] == 'recipe-purchase-requested'
+                    assert notification['user_id'] == user_id
+
+                    notification_info = notification['data']
+
+                    assert notification_info['user_name'] == user_info_status.details.data['name']
+                    assert notification_info['recipe_id'] == recipe_id
+                    assert notification_info['recipe_name'] == recipe.summary.name
+
+    def test_send_purchase_notification__all_recipes_error(
+        self,
+        callback_null_params,
+        recipe_purchase_info: sch.RecipePurchaseInfo,
+        notifications_manager: srv.NotificationEventsManager,
+    ) -> None:
+        serialized_recipe_purchase_info = recipe_purchase_info.model_dump_json()
+
+        with mock.patch(target='services.notifications_manager', new=notifications_manager):
+            with mock.patch(target='services.get_all_recipes') as mock_all_recipes:
+                mock_all_recipes.return_value = ost.error_retrieving_all_recipes_status()
+
+                srv.send_purchase_notification(
+                    **callback_null_params,
+                    body=serialized_recipe_purchase_info
+                )
+
+                user_id = recipe_purchase_info.user_id
+                assert user_id not in srv.notifications_manager.users_mapping
+
+    def test_send_purchase_notification__inexistent_recipe(
+        self,
+        callback_null_params,
+        all_recipes_status: sch.OutputStatus,
+        user_info_status: sch.OutputStatus,
+        recipe_purchase_info: sch.RecipePurchaseInfo,
+        notifications_manager: srv.NotificationEventsManager,
+    ) -> None:
+        inexistent_recipe_info = recipe_purchase_info
+        inexistent_recipe_info.recipe_id = 'inexistent_recipe'
+        serialized_recipe_purchase_info = inexistent_recipe_info.model_dump_json()
+
+        with mock.patch(target='services.notifications_manager', new=notifications_manager):
+            with mock.patch(target='services.get_all_recipes') as mock_all_recipes:
+                mock_all_recipes.return_value = all_recipes_status
+                with mock.patch(target='services.get_user_info') as mock_user_info:
+                    mock_user_info.return_value = user_info_status
+
+                    srv.send_purchase_notification(
+                        **callback_null_params,
+                        body=serialized_recipe_purchase_info
+                    )
+
+                    user_id = recipe_purchase_info.user_id
+                    assert user_id not in srv.notifications_manager.users_mapping
