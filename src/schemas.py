@@ -223,7 +223,7 @@ class PaymentCcInfo(BaseModel):
 
 class PaymentEncrInfo(BaseModel):
     """Encrypted payment information."""
-    encr_info: bytes = Field(min_length=1, max_length=LARGE_TEXT_MAX_LENGTH)
+    encr_info: str = Field(min_length=1, max_length=LARGE_TEXT_MAX_LENGTH)
 
 
 class PaymentCheckoutInfo(BaseModel):

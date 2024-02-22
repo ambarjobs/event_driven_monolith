@@ -10,6 +10,7 @@ import random
 import time
 import uuid
 from collections import defaultdict
+from concurrent.futures import BrokenExecutor, ThreadPoolExecutor
 from datetime import datetime, timedelta, UTC
 from typing import Any, AsyncIterator, BinaryIO, Iterator
 
@@ -28,7 +29,7 @@ import output_status as ost
 import utils
 from config import logging as log
 from database import db
-from exceptions import InvalidCsvFormatError
+from exceptions import InvalidCsvFormatError, MessagePublishingConfirmationError
 
 
 MIN_MINUTES_PROCESSING_PAYMENT = 1
@@ -41,7 +42,13 @@ CONSUMERS_SUBSCRIPTIONS = (
         topic_name='recipe-purchase-requested',
         consumer_service_name='send_purchase_notification'
     ),
+    ps.Subscription(
+        topic_name='recipe-purchase-requested',
+        consumer_service_name='add_user_recipe'
+    ),
 )
+
+services_executor = ThreadPoolExecutor(max_workers=config.PAYMENT_PROVIDER_MAX_WORKERS)
 
 
 # TODO: Substitute with something using CouchDB instead of `queue.SimpleQueue` for scalability.
@@ -151,7 +158,10 @@ def user_sign_up(
                 user_name=user_info.name,
                 base_url=base_url,
             ).model_dump_json()
-            sign_up_producer.publish(topic='user-signed-up', message=message)
+            try:
+                sign_up_producer.publish(topic='user-signed-up', message=message)
+            except MessagePublishingConfirmationError as err:
+                log.error(str(err))
 
             return ost.successful_sign_up_status()
 
@@ -329,7 +339,10 @@ def check_email_confirmation(token: str) -> sch.OutputStatus:
         )
 
         email_confirmed_producer = ps.PubSub()
-        email_confirmed_producer.publish(topic='email-confirmed', message=email_confirmation_info.user_id)
+        try:
+            email_confirmed_producer.publish(topic='email-confirmed', message=email_confirmation_info.user_id)
+        except MessagePublishingConfirmationError as err:
+            log.error(str(err))
         output_status = ost.confirmed_status()
         output_status.details.data = {'email': email_confirmation_info.user_id, 'name': email_confirmation_info.user_name}
         return output_status
@@ -521,7 +534,7 @@ def get_specific_recipe(recipe_id: str) -> sch.OutputStatus:
 # --------------------------------------------------------------------------------------------------
 #   Purchasing functionality
 # --------------------------------------------------------------------------------------------------
-def start_checkout(user_id: str, recipe_id: str, payment_encr_info: bytes) -> sch.OutputStatus:
+def start_checkout(user_id: str, recipe_id: str, payment_encr_info: str) -> sch.OutputStatus:
     """Start the checkout process for purchasing a recipe."""
     body = sch.PaymentCheckoutInfo(
         payment_encr_info=sch.PaymentEncrInfo(encr_info=payment_encr_info),
@@ -553,7 +566,10 @@ def start_checkout(user_id: str, recipe_id: str, payment_encr_info: bytes) -> sc
 
     recipe_purchase_producer = ps.PubSub()
     message = sch.RecipePurchaseInfo(user_id=user_id, recipe_id=recipe_id).model_dump_json()
-    recipe_purchase_producer.publish(topic='recipe-purchase-requested', message=message)
+    try:
+        recipe_purchase_producer.publish(topic='recipe-purchase-requested', message=message)
+    except MessagePublishingConfirmationError as err:
+        log.error(str(err))
 
     return ost.start_checkout_status()
 
@@ -589,7 +605,10 @@ def update_payment_status(
         recipe_id=webhook_payment_info.recipe_id,
         payment_status=webhook_payment_info.payment_status,
     ).model_dump_json()
-    update_payment_status_producer.publish(topic='purchase-status-changed', message=message)
+    try:
+        update_payment_status_producer.publish(topic='purchase-status-changed', message=message)
+    except MessagePublishingConfirmationError as err:
+        log.error(str(err))
 
     log.info(
         f'Payment status of [{webhook_payment_info.payment_id}] changed'
@@ -643,6 +662,16 @@ def payment_processing(checkout_id: str, recipe_id: str) -> sch.OutputStatus:
     except httpx.HTTPStatusError as err:
         return ost.http_error_status(error=err)
     return ost.payment_processing_status()
+
+def trigger_payment_processing(checkout_id: str, recipe_id: str) -> sch.OutputStatus:
+    """Triggering `payment_processing` in a different thread to release `create_checkout` endpoint."""
+    try:
+        services_executor.submit(payment_processing, checkout_id=checkout_id, recipe_id=recipe_id)
+    except BrokenExecutor as err:
+        output_status = ost.trigger_payment_processing_executor_error_status()
+        output_status.details.data = {'error': err}
+        return output_status
+    return ost.trigger_payment_processing_status()
 
 
 # --------------------------------------------------------------------------------------------------
@@ -698,6 +727,26 @@ def send_purchase_notification(
     )
 
     notifications_manager.put(user_id=recipe_purchase_info.user_id, data=notification.model_dump())
+
+    # On tests there is no channel or method because the parameters are mocked
+    if channel:
+        # Acknowledging the message.
+        channel.basic_ack(delivery_tag=method.delivery_tag)
+
+def add_user_recipe(
+    channel: BlockingChannel,
+    method: Basic.Deliver,
+    properties: BasicProperties,
+    body: bytes
+) -> None:
+    """Add the purchased recipe to `user-recipes`."""
+    recipe_purchase_info = sch.RecipePurchaseInfo.model_validate_json(body)
+
+    db.upsert_document(
+        database_name=config.USER_RECIPES_DB_NAME,
+        document_id=recipe_purchase_info.user_id,
+        fields={'recipe_id': recipe_purchase_info.recipe_id, 'status': sch.RecipeStatus.requested}
+    )
 
     # On tests there is no channel or method because the parameters are mocked
     if channel:

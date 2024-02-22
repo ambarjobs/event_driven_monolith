@@ -332,6 +332,26 @@ def error_accessing_app_webhook_status() -> sch.OutputStatus:
         ),
     )
 
+# ----------------------------------------------------------------------------------------------
+#   `trigger_payment_processing` output status
+# ----------------------------------------------------------------------------------------------
+def trigger_payment_processing_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='payment_processing_triggered',
+        error=False,
+        details=sch.StatusDetails(
+            description='The payment processing was triggered.'
+        ),
+    )
+
+def trigger_payment_processing_executor_error_status() -> sch.OutputStatus:
+    return sch.OutputStatus(
+        status='payment_processing_triggering_executor_error',
+        error=True,
+        details=sch.StatusDetails(
+            description='Error on ThreadPoolExecutor trying to trigger payment processing.'
+        ),
+    )
 
 # ==================================================================================================
 #  Endpoints output status

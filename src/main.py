@@ -426,20 +426,19 @@ def create_checkout(
 
         try:
             payment_info = sch.PaymentCcInfo.decrypt(
-                payment_checkout_info.payment_encr_info.encr_info
+                payment_checkout_info.payment_encr_info.encr_info.encode(config.APP_ENCODING_FORMAT)
             )
             # Use `payment_info` to charge the credit card through an operator.
             payment_info # ...
 
-            payment_process_status = srv.payment_processing(
+            payment_processing_trigger_status = srv.trigger_payment_processing(
                 checkout_id=checkout_id,
                 recipe_id=recipe_id
             )
-
-            if payment_process_status.error:
-                output_status = payment_process_status
+            if payment_processing_trigger_status.error:
+                output_status = payment_processing_trigger_status
                 status_code = (
-                    payment_process_status.details.error_code or
+                    payment_processing_trigger_status.details.error_code or
                     status.HTTP_422_UNPROCESSABLE_ENTITY
                 )
             else:

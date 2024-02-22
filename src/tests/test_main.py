@@ -1399,14 +1399,14 @@ class TestPurchasingApi:
         payload = {'sub': user_credentials.id}
         token = utils.create_token(payload=payload)
 
-        encr_payment_info = cc_payment_info.encrypt()
+        encr_payment_info = cc_payment_info.encrypt().decode(encoding=config.APP_ENCODING_FORMAT)
 
         with mock.patch(target='services.start_checkout', autospec=True) as mock_start_checkout:
             mock_start_checkout.return_value = ost.start_checkout_status()
             buy_recipe_response = client.post(
                 url=f'/buy-recipe/{recipe.id}',
                 json={
-                    'encr_info': encr_payment_info.decode(encoding=config.APP_ENCODING_FORMAT)
+                    'encr_info': encr_payment_info
                 },
                 headers={'Authorization': f'Bearer {token}'}
             )
@@ -1686,13 +1686,15 @@ class TestPaymentProviderSimulatorApi:
         checkout_id: str,
     ) -> None:
         with mock.patch(
-            target='services.payment_processing',
+            target='services.trigger_payment_processing',
             autospec=True
-        ) as mock_payment_processing:
+        ) as mock_trigger_payment_processing:
             with mock.patch(target='main.uuid4') as mock_uuid4:
                 mock_uuid4.return_value = checkout_id
 
-                mock_payment_processing.return_value = ost.error_accessing_app_webhook_status()
+                mock_trigger_payment_processing.return_value = (
+                    ost.trigger_payment_processing_executor_error_status()
+                )
 
                 body = {
                     'payment_encr_info': {
@@ -1706,11 +1708,13 @@ class TestPaymentProviderSimulatorApi:
                 )
 
                 assert create_checkout_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+                mock_trigger_payment_processing.assert_called_with(
+                    checkout_id=checkout_id,
+                    recipe_id=recipe.id
+                )
 
                 create_checkout_response_json = create_checkout_response.json()
-
-
-                expected_status = ost.error_accessing_app_webhook_status()
+                expected_status = ost.trigger_payment_processing_executor_error_status()
 
                 assert create_checkout_response_json == expected_status.model_dump()
 

@@ -90,7 +90,6 @@ class PubSub:
             self.channel.basic_publish(exchange=topic, routing_key='', body=message, mandatory=True)
         except UnroutableError as err:
             error_msg = f'The sending of an event message could not be confirmed: {err}'
-            log.error(error_msg)
             raise MessagePublishingConfirmationError(error_msg)
         self.connection.close()
 

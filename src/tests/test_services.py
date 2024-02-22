@@ -1189,7 +1189,7 @@ class TestPurchasingServices:
         payment_db.create()
         payment_db.add_permissions()
 
-        test_payment_encr_info = cc_payment_info.encrypt()
+        test_payment_encr_info = cc_payment_info.encrypt().decode(config.APP_ENCODING_FORMAT)
         body = {
             'payment_encr_info': {'encr_info': test_payment_encr_info},
             'api_key': config.PAYMENT_PROVIDER_API_KEY
@@ -1242,7 +1242,7 @@ class TestPurchasingServices:
         recipe: sch.Recipe,
         cc_payment_info: sch.PaymentCcInfo,
     ) -> None:
-        test_payment_encr_info = cc_payment_info.encrypt()
+        test_payment_encr_info = cc_payment_info.encrypt().decode(config.APP_ENCODING_FORMAT)
         body = {
             'payment_encr_info': {'encr_info': test_payment_encr_info},
             'api_key': config.PAYMENT_PROVIDER_API_KEY
@@ -1278,7 +1278,7 @@ class TestPurchasingServices:
         recipe: sch.Recipe,
         cc_payment_info: sch.PaymentCcInfo,
     ) -> None:
-        test_payment_encr_info = cc_payment_info.encrypt()
+        test_payment_encr_info = cc_payment_info.encrypt().decode(config.APP_ENCODING_FORMAT)
         body = {
             'payment_encr_info': {'encr_info': test_payment_encr_info},
             'api_key': config.PAYMENT_PROVIDER_API_KEY
@@ -1314,7 +1314,7 @@ class TestPurchasingServices:
         recipe: sch.Recipe,
         cc_payment_info: sch.PaymentCcInfo,
     ) -> None:
-        test_payment_encr_info = cc_payment_info.encrypt()
+        test_payment_encr_info = cc_payment_info.encrypt().decode(config.APP_ENCODING_FORMAT)
         body = {
             'payment_encr_info': {'encr_info': test_payment_encr_info},
             'api_key': config.PAYMENT_PROVIDER_API_KEY

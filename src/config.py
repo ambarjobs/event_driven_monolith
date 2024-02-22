@@ -78,9 +78,15 @@ CSV_LIST_SEPARATOR = '|'
 # --------------------------------------------------------------------------------------------------
 #  Purchasing functionality
 # --------------------------------------------------------------------------------------------------
+APP_WEBHOOK_URL = 'http://localhost/payment-webhook/'
+
+
+# --------------------------------------------------------------------------------------------------
+#  Payment provider simulator functionality
+# --------------------------------------------------------------------------------------------------
 PAYMENT_PROVIDER_API_KEY = os.environ.get('PAYMENT_PROVIDER_API_KEY', '')
 PAYMENT_PROVIDER_ENCRYPTION_KEY = os.environ.get(
     'PAYMENT_PROVIDER_ENCRYPTION_KEY', ''
 ).encode(APP_ENCODING_FORMAT)
 PAYMENT_PROVIDER_CHECKOUT_URL = 'http://localhost/create-checkout/'
-APP_WEBHOOK_URL = 'http://localhost/payment-webhook/'
+PAYMENT_PROVIDER_MAX_WORKERS = 5
