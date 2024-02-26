@@ -4,7 +4,7 @@
 import json
 from datetime import datetime, UTC
 from enum import IntEnum, StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
 from fastapi.encoders import jsonable_encoder
 from pydantic import (
@@ -132,6 +132,18 @@ class RecipeStatus(StrEnum):
     requested = 'requested'
     purchased = 'purchased'
 
+    @classmethod
+    def from_payment_status(cls, payment_status: 'PaymentStatus') -> Self | None:
+        recipe_status: Self | None = None
+        match payment_status:
+            case PaymentStatus.PENDING:
+                recipe_status = cls.requested
+            case PaymentStatus.PAID:
+                recipe_status = cls.purchased
+            case _:
+                recipe_status = None
+        return recipe_status
+
 
 class RecipeSummary(BaseModel):
     """Summary description of the recipe."""
@@ -245,6 +257,10 @@ class PurchaseStatusInfo(RecipePurchaseInfo):
     """Purchased payment status change event message."""
     payment_status: PaymentStatus
     when: AwareDatetime = datetime.now(tz=UTC)
+
+    def to_json(self, *args, **kwargs) -> dict:
+        """Return a JSON serializable representation of the PurchaseStatusInfo."""
+        return jsonable_encoder(self.model_dump(*args, **kwargs))
 
 
 class WebhookPaymentInfo(BaseModel):

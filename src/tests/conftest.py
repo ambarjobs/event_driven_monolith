@@ -432,6 +432,17 @@ def recipe_purchase_info(
     """Return an `RecipePurchaseInfo` structure."""
     return sch.RecipePurchaseInfo(user_id=user_id, recipe_id=recipe.id)
 
+@pytest.fixture
+def paid_purchase_status_info(
+    recipe_purchase_info: sch.RecipePurchaseInfo,
+) -> sch.PurchaseStatusInfo:
+    """Return an `PurchaseStatusInfo` structure."""
+    return sch.PurchaseStatusInfo(
+        user_id=recipe_purchase_info.user_id,
+        recipe_id=recipe_purchase_info.recipe_id,
+        payment_status=sch.PaymentStatus.PAID,
+    )
+
 
 # --------------------------------------------------------------------------------------------------
 #   Purchase events handling

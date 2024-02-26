@@ -1696,6 +1696,7 @@ class TestPurchaseEventsHandling:
 
     def test_send_purchase_notification__all_recipes_error(
         self,
+        caplog,
         callback_null_params,
         recipe_purchase_info: sch.RecipePurchaseInfo,
         notifications_manager: srv.NotificationEventsManager,
@@ -1714,8 +1715,12 @@ class TestPurchaseEventsHandling:
                 user_id = recipe_purchase_info.user_id
                 assert user_id not in srv.notifications_manager.users_mapping
 
+                message = 'An error ocurred trying to retrieve all recipes.'
+                assert message in caplog.text
+
     def test_send_purchase_notification__inexistent_recipe(
         self,
+        caplog,
         callback_null_params,
         all_recipes_status: sch.OutputStatus,
         user_info_status: sch.OutputStatus,
@@ -1739,3 +1744,219 @@ class TestPurchaseEventsHandling:
 
                     user_id = recipe_purchase_info.user_id
                     assert user_id not in srv.notifications_manager.users_mapping
+
+                    message = 'Purchase status changing event refers to an inexistent recipe.'
+                    assert message in caplog.text
+
+    # ----------------------------------------------------------------------------------------------
+    #   `add_user_recipe` consumer service
+    # ----------------------------------------------------------------------------------------------
+    def test_add_user_recipe__general_case(
+        self,
+        callback_null_params,
+        test_db: Db,
+        recipe_purchase_info: sch.RecipePurchaseInfo,
+    ) -> None:
+        user_recipe_db = test_db
+        user_recipe_db.database_name = config.USER_RECIPES_DB_NAME
+        user_recipe_db.create()
+        user_recipe_db.add_permissions()
+
+        serialized_recipe_purchase_info = recipe_purchase_info.model_dump_json()
+
+        srv.add_user_recipe(
+            **callback_null_params,
+            body=serialized_recipe_purchase_info
+        )
+
+        user_recipes_db = user_recipe_db.get_document_by_id(
+            document_id=recipe_purchase_info.user_id
+        )
+        user_recipes = user_recipes_db.get('recipes', [])
+
+        assert user_recipes == [
+            {'recipe_id': recipe_purchase_info.recipe_id, 'status': sch.RecipeStatus.requested}
+        ]
+
+    def test_add_user_recipe__already_exists(
+        self,
+        caplog,
+        callback_null_params,
+        test_db: Db,
+        recipe_purchase_info: sch.RecipePurchaseInfo,
+    ) -> None:
+        user_recipe_db = test_db
+        user_recipe_db.database_name = config.USER_RECIPES_DB_NAME
+        user_recipe_db.create()
+        user_recipe_db.add_permissions()
+
+        user_id = recipe_purchase_info.user_id
+        recipe_id = recipe_purchase_info.recipe_id
+
+        test_recipe = {'recipe_id': recipe_id}
+        user_recipe_db.create_document(
+            document_id=user_id,
+            body={'recipes': [test_recipe]},
+        )
+
+        serialized_recipe_purchase_info = recipe_purchase_info.model_dump_json()
+
+        srv.add_user_recipe(
+            **callback_null_params,
+            body=serialized_recipe_purchase_info
+        )
+
+        message = f'Trying to add an already existent recipe [{recipe_id}] for user [{user_id}].'
+        assert message in caplog.text
+
+        user_recipes_db = user_recipe_db.get_document_by_id(
+            document_id=user_id
+        )
+        user_recipes = user_recipes_db.get('recipes', [])
+
+        # The `test_recipe` doesn't have, purposely, a `status`, so this indicates the document
+        # is untouched.
+        assert user_recipes == [test_recipe]
+
+    # ----------------------------------------------------------------------------------------------
+    #   `update_recipe_status` consumer service
+    # ----------------------------------------------------------------------------------------------
+    def test_update_recipe_status__general_case(
+        self,
+        callback_null_params,
+        test_db: Db,
+        paid_purchase_status_info: sch.PurchaseStatusInfo,
+    ) -> None:
+        user_recipe_db = test_db
+        user_recipe_db.database_name = config.USER_RECIPES_DB_NAME
+        user_recipe_db.create()
+        user_recipe_db.add_permissions()
+
+        serialized_paid_purchase_status_info = paid_purchase_status_info.model_dump_json()
+        user_id = paid_purchase_status_info.user_id
+        recipe_id = paid_purchase_status_info.recipe_id
+
+        body = {
+            'recipes': [
+                {'recipe_id': recipe_id, 'status': sch.RecipeStatus.requested}
+            ]
+        }
+        user_recipe_db.create_document(document_id=user_id, body=body)
+
+        srv.update_recipe_status(
+            **callback_null_params,
+            body=serialized_paid_purchase_status_info
+        )
+
+        user_recipes_db = user_recipe_db.get_document_by_id(
+            document_id=user_id
+        )
+        user_recipes = user_recipes_db.get('recipes', [])
+
+        assert user_recipes == [
+            {'recipe_id': recipe_id, 'status': sch.RecipeStatus.purchased}
+        ]
+
+    def test_update_recipe_status__no_recipes(
+        self,
+        caplog,
+        callback_null_params,
+        test_db: Db,
+        paid_purchase_status_info: sch.PurchaseStatusInfo,
+    ) -> None:
+        user_recipe_db = test_db
+        user_recipe_db.database_name = config.USER_RECIPES_DB_NAME
+        user_recipe_db.create()
+        user_recipe_db.add_permissions()
+
+        serialized_paid_purchase_status_info = paid_purchase_status_info.model_dump_json()
+        user_id = paid_purchase_status_info.user_id
+        recipe_id = paid_purchase_status_info.recipe_id
+
+        srv.update_recipe_status(
+            **callback_null_params,
+            body=serialized_paid_purchase_status_info
+        )
+
+        message = f'Trying to update an inexistent recipe [{recipe_id}] for user [{user_id}].'
+        assert message in caplog.text
+
+        user_recipes_db = user_recipe_db.get_document_by_id(
+            document_id=user_id
+        )
+        user_recipes = user_recipes_db.get('recipes', [])
+
+        assert user_recipes == []
+
+    def test_update_recipe_status__unknown_payment_status(
+        self,
+        caplog,
+        callback_null_params,
+        test_db: Db,
+        paid_purchase_status_info: sch.PurchaseStatusInfo,
+    ) -> None:
+        user_recipe_db = test_db
+        user_recipe_db.database_name = config.USER_RECIPES_DB_NAME
+        user_recipe_db.create()
+        user_recipe_db.add_permissions()
+
+        unknown_payment_status = sch.PaymentStatus.CANCELLED
+        paid_purchase_status_info.payment_status = unknown_payment_status
+        serialized_paid_purchase_status_info = paid_purchase_status_info.model_dump_json()
+        user_id = paid_purchase_status_info.user_id
+        recipe_id = paid_purchase_status_info.recipe_id
+
+        test_recipe = {'recipe_id': recipe_id, 'status': sch.RecipeStatus.requested}
+        body = {'recipes': [test_recipe]}
+        user_recipe_db.create_document(document_id=user_id, body=body)
+
+        srv.update_recipe_status(
+            **callback_null_params,
+            body=serialized_paid_purchase_status_info
+        )
+
+        message = f'Unable to update to unidentified status: {unknown_payment_status}.'
+        assert message in caplog.text
+
+        user_recipes_db = user_recipe_db.get_document_by_id(
+            document_id=user_id
+        )
+        user_recipes = user_recipes_db.get('recipes', [])
+
+        assert user_recipes == [test_recipe]
+
+    # ----------------------------------------------------------------------------------------------
+    #   `notify_recipe_state_change` consumer service
+    # ----------------------------------------------------------------------------------------------
+    def test_notify_recipe_state_change__general_case(
+        self,
+        callback_null_params,
+        paid_purchase_status_info: sch.PurchaseStatusInfo,
+        notifications_manager: srv.NotificationEventsManager,
+    ) -> None:
+        serialized_purchase_status_info = paid_purchase_status_info.model_dump_json()
+
+        with mock.patch(target='services.notifications_manager', new=notifications_manager):
+            srv.notify_recipe_state_change(
+                **callback_null_params,
+                body=serialized_purchase_status_info
+            )
+
+            user_id = paid_purchase_status_info.user_id
+            recipe_id = paid_purchase_status_info.recipe_id
+            assert user_id in srv.notifications_manager.users_mapping
+
+            user_queue = srv.notifications_manager.users_mapping[user_id]
+            assert isinstance(user_queue, queue.SimpleQueue)
+            assert not user_queue.empty()
+
+            notification = json.loads(user_queue.get_nowait().data)
+            assert notification['event_name'] == 'purchase-status-changed'
+            assert notification['user_id'] == user_id
+
+            notification_info = notification['data']
+
+            assert notification_info['user_id'] == user_id
+            assert notification_info['recipe_id'] == recipe_id
+            assert notification_info['payment_status'] == paid_purchase_status_info.payment_status
+            assert notification_info.get('when') is not None

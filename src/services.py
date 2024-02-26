@@ -46,6 +46,14 @@ CONSUMERS_SUBSCRIPTIONS = (
         topic_name='recipe-purchase-requested',
         consumer_service_name='add_user_recipe'
     ),
+    ps.Subscription(
+        topic_name='purchase-status-changed',
+        consumer_service_name='update_recipe_status'
+    ),
+    ps.Subscription(
+        topic_name='purchase-status-changed',
+        consumer_service_name='notify_recipe_state_change'
+    ),
 )
 
 services_executor = ThreadPoolExecutor(max_workers=config.PAYMENT_PROVIDER_MAX_WORKERS)
@@ -61,7 +69,7 @@ class NotificationEventsManager:
     def put(self, user_id: str, data: JsonValue) -> None:
         """Enqueue data on specific `user_id` queue."""
         queue = self.users_mapping[user_id]
-        queue.put(ServerSentEvent(data=json.dumps(data)))
+        queue.put_nowait(ServerSentEvent(data=json.dumps(data)))
 
     def get(self, user_id: str) -> ServerSentEvent | None:
         """Dequeue data from specific `user_id` queue."""
@@ -623,6 +631,7 @@ def update_payment_status(
 # --------------------------------------------------------------------------------------------------
 def payment_processing(checkout_id: str, recipe_id: str) -> sch.OutputStatus:
     """Notify application payment webhook of result of payment process."""
+    random.seed()
     minutes_processing = random.randint(
         MIN_MINUTES_PROCESSING_PAYMENT,
         MAX_MINUTES_PROCESSING_PAYMENT
@@ -692,11 +701,7 @@ def send_purchase_notification(
 
     all_recipes_status = get_all_recipes()
     if all_recipes_status.error:
-        notification = sch.Notification(
-            event_name='error',
-            user_id=recipe_purchase_info.user_id,
-            data=all_recipes_status.details.data
-        )
+        log.error(all_recipes_status.details)
         return
 
     all_recipes = utils.deep_traversal(all_recipes_status.details.data, 'all_recipes')
@@ -704,11 +709,7 @@ def send_purchase_notification(
         seq=[recipe for recipe in all_recipes if recipe.id == recipe_purchase_info.recipe_id]
     )
     if not purchased_recipe:
-        notification = sch.Notification(
-            event_name='error',
-            user_id=recipe_purchase_info.user_id,
-            data={'errors': ['recipe not found']}
-        )
+        log.error('Purchase status changing event refers to an inexistent recipe.')
         return
 
     user_info_status = get_user_info(user_id=recipe_purchase_info.user_id)
@@ -741,12 +742,118 @@ def add_user_recipe(
 ) -> None:
     """Add the purchased recipe to `user-recipes`."""
     recipe_purchase_info = sch.RecipePurchaseInfo.model_validate_json(body)
+    user_id = recipe_purchase_info.user_id
+    recipe_id = recipe_purchase_info.recipe_id
+
+    try:
+        user_recipes_db = db.get_document_by_id(
+            database_name=config.USER_RECIPES_DB_NAME,
+            document_id=user_id
+        )
+    except httpx.HTTPStatusError as err:
+        if err.response.status_code == status.HTTP_404_NOT_FOUND:
+            # No recipes found
+            user_recipes_db = {}
+        else:
+            log.error(f'Error reading [{config.USER_RECIPES_DB_NAME}] database')
+            return
+
+    user_recipes = user_recipes_db.get('recipes', [])
+    user_recipes_ids = [recipe['recipe_id'] for recipe in user_recipes]
+    if recipe_id in user_recipes_ids:
+        log.error(
+            f'Trying to add an already existent recipe [{recipe_id}] '
+            f'for user [{user_id}].'
+        )
+        return
+
+    user_recipes.append({'recipe_id': recipe_id, 'status': sch.RecipeStatus.requested})
+    fields = {'recipes': user_recipes}
+    db.upsert_document(
+        database_name=config.USER_RECIPES_DB_NAME,
+        document_id=user_id,
+        fields=fields,
+    )
+
+    # On tests there is no channel or method because the parameters are mocked
+    if channel:
+        # Acknowledging the message.
+        channel.basic_ack(delivery_tag=method.delivery_tag)
+
+def update_recipe_status(
+    channel: BlockingChannel,
+    method: Basic.Deliver,
+    properties: BasicProperties,
+    body: bytes
+) -> None:
+    """Update the payment status of a recipe purchasing in processing."""
+    recipe_purchase_status_info = sch.PurchaseStatusInfo.model_validate_json(body)
+    user_id = recipe_purchase_status_info.user_id
+    recipe_id = recipe_purchase_status_info.recipe_id
+    payment_status = recipe_purchase_status_info.payment_status
+
+    try:
+        user_recipes_db = db.get_document_by_id(
+            database_name=config.USER_RECIPES_DB_NAME,
+            document_id=user_id
+        )
+    except httpx.HTTPStatusError as err:
+        if err.response.status_code == status.HTTP_404_NOT_FOUND:
+            # No recipes found
+            user_recipes_db = {}
+        else:
+            log.error(f'Error reading [{config.USER_RECIPES_DB_NAME}] database.')
+            return
+
+    user_recipes = user_recipes_db.get('recipes', [])
+    user_recipes_ids = [recipe['recipe_id'] for recipe in user_recipes]
+    if recipe_id not in user_recipes_ids:
+        log.error(
+            f'Trying to update an inexistent recipe [{recipe_id}] '
+            f'for user [{user_id}].'
+        )
+        return
+
+    recipe_status = sch.RecipeStatus.from_payment_status(
+        payment_status=payment_status
+    )
+    if not recipe_status:
+        log.error(f'Unable to update to unidentified status: {payment_status}.')
+        return
+
+    other_recipes = [recipe for recipe in user_recipes if recipe['recipe_id'] != recipe_id]
+    fields = {
+        'recipes': other_recipes + [{'recipe_id': recipe_id, 'status': recipe_status}]
+    }
 
     db.upsert_document(
         database_name=config.USER_RECIPES_DB_NAME,
-        document_id=recipe_purchase_info.user_id,
-        fields={'recipe_id': recipe_purchase_info.recipe_id, 'status': sch.RecipeStatus.requested}
+        document_id=user_id,
+        fields=fields,
     )
+
+    # On tests there is no channel or method because the parameters are mocked
+    if channel:
+        # Acknowledging the message.
+        channel.basic_ack(delivery_tag=method.delivery_tag)
+
+def notify_recipe_state_change(
+    channel: BlockingChannel,
+    method: Basic.Deliver,
+    properties: BasicProperties,
+    body: bytes
+) -> None:
+    """Send notification by SSE about recipes purchase state changes."""
+    purchase_status_info = sch.PurchaseStatusInfo.model_validate_json(body)
+    user_id = purchase_status_info.user_id
+
+    notification = sch.Notification(
+        event_name='purchase-status-changed',
+        user_id=user_id,
+        data=purchase_status_info.to_json()
+    )
+
+    notifications_manager.put(user_id=user_id, data=notification.model_dump())
 
     # On tests there is no channel or method because the parameters are mocked
     if channel:
