@@ -121,25 +121,24 @@ NoEmptyList = Annotated[list[str], AfterValidator(no_empty_list)]
 
 class RecipeEasiness(StrEnum):
     """Options of recipe easiness."""
-    easy = 'easy'
-    medium = 'medium'
-    hard = 'hard'
+    EASY = 'easy'
+    MEDIUM = 'medium'
+    HARD = 'hard'
 
 
 class RecipeStatus(StrEnum):
     """Options of recipe status."""
-    available = 'available'
-    requested = 'requested'
-    purchased = 'purchased'
+    AVAILABLE = 'available'
+    REQUESTED = 'requested'
+    PURCHASED = 'purchased'
 
     @classmethod
     def from_payment_status(cls, payment_status: 'PaymentStatus') -> Self | None:
-        recipe_status: Self | None = None
         match payment_status:
             case PaymentStatus.PENDING:
-                recipe_status = cls.requested
+                recipe_status = cls.REQUESTED
             case PaymentStatus.PAID:
-                recipe_status = cls.purchased
+                recipe_status = cls.PURCHASED
             case _:
                 recipe_status = None
         return recipe_status
@@ -161,14 +160,14 @@ class Recipe(BaseModel):
     """Recipe representation."""
     summary: RecipeSummary
     category: str = Field(max_length=SMALL_FIELD_MAX_LENGTH, default='')
-    easiness: RecipeEasiness = RecipeEasiness.medium
+    easiness: RecipeEasiness = RecipeEasiness.MEDIUM
     tags: list[str] = Field(
         default_factory=list,
         max_length=SMALL_FIELD_MAX_LENGTH,
     )
     recipe: RecipeInformation | None = None
     price: float | None = None
-    status: RecipeStatus = RecipeStatus.available
+    status: RecipeStatus = RecipeStatus.AVAILABLE
     modif_datetime: AwareDatetime = datetime.now(tz=UTC)
 
     @computed_field(alias='recipe_id')  # type: ignore[misc]

@@ -984,9 +984,9 @@ class TestRecipesApi:
 
         self.available_user_recipe = deepcopy(recipe)
         self.purchased_user_recipe = deepcopy(another_recipe)
-        self.purchased_user_recipe.status = sch.RecipeStatus.purchased
+        self.purchased_user_recipe.status = sch.RecipeStatus.PURCHASED
         self.requested_user_recipe = deepcopy(one_more_recipe)
-        self.requested_user_recipe.status = sch.RecipeStatus.requested
+        self.requested_user_recipe.status = sch.RecipeStatus.REQUESTED
 
         self.user_recipes = (self.purchased_user_recipe, self.requested_user_recipe)
         self.user_recipes_mapping = {recipe.id: recipe.to_json(exclude={'price', 'recipe'}) for recipe in self.user_recipes}

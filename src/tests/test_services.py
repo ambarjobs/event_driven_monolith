@@ -1775,7 +1775,7 @@ class TestPurchaseEventsHandling:
         user_recipes = user_recipes_db.get('recipes', [])
 
         assert user_recipes == [
-            {'recipe_id': recipe_purchase_info.recipe_id, 'status': sch.RecipeStatus.requested}
+            {'recipe_id': recipe_purchase_info.recipe_id, 'status': sch.RecipeStatus.REQUESTED}
         ]
 
     def test_add_user_recipe__already_exists(
@@ -1838,7 +1838,7 @@ class TestPurchaseEventsHandling:
 
         body = {
             'recipes': [
-                {'recipe_id': recipe_id, 'status': sch.RecipeStatus.requested}
+                {'recipe_id': recipe_id, 'status': sch.RecipeStatus.REQUESTED}
             ]
         }
         user_recipe_db.create_document(document_id=user_id, body=body)
@@ -1854,7 +1854,7 @@ class TestPurchaseEventsHandling:
         user_recipes = user_recipes_db.get('recipes', [])
 
         assert user_recipes == [
-            {'recipe_id': recipe_id, 'status': sch.RecipeStatus.purchased}
+            {'recipe_id': recipe_id, 'status': sch.RecipeStatus.PURCHASED}
         ]
 
     def test_update_recipe_status__no_recipes(
@@ -1906,7 +1906,7 @@ class TestPurchaseEventsHandling:
         user_id = paid_purchase_status_info.user_id
         recipe_id = paid_purchase_status_info.recipe_id
 
-        test_recipe = {'recipe_id': recipe_id, 'status': sch.RecipeStatus.requested}
+        test_recipe = {'recipe_id': recipe_id, 'status': sch.RecipeStatus.REQUESTED}
         body = {'recipes': [test_recipe]}
         user_recipe_db.create_document(document_id=user_id, body=body)
 

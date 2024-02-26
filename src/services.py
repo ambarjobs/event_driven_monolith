@@ -294,10 +294,11 @@ def check_email_confirmation(token: str) -> sch.OutputStatus:
             token_payload = utils.get_token_payload(token=token)
         except ExpiredSignatureError:
             # It's not possible to get user_info from token payload because it's expired (exception).
-            # TODO: Maybe to pass `id` and `name` in addition to token to `confirm_email` endpoint
+            # TODO: Maybe by passing `id` and `name` in addition to token to `confirm_email` endpoint.
             #       This would duplicate information inside the token (maybe there is a better
             #       solution).
 
+            # # Resend emil confirmation email/notification
             # email_confirmation(
             #     channel=None,
             #     method=None,
@@ -431,7 +432,7 @@ def parse_recipe_data(csv_data: dict[str, Any]) -> sch.Recipe:
         **recipe_direct_data,
         tags=tags,
         recipe=recipe_info,
-        status=sch.RecipeStatus.available,
+        status=sch.RecipeStatus.AVAILABLE,
     )
     return parsed_recipe
 
@@ -767,7 +768,7 @@ def add_user_recipe(
         )
         return
 
-    user_recipes.append({'recipe_id': recipe_id, 'status': sch.RecipeStatus.requested})
+    user_recipes.append({'recipe_id': recipe_id, 'status': sch.RecipeStatus.REQUESTED})
     fields = {'recipes': user_recipes}
     db.upsert_document(
         database_name=config.USER_RECIPES_DB_NAME,
