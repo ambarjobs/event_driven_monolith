@@ -86,7 +86,7 @@ Below there are the main parts of the project with indication of what has been i
     [x] Basic platform operation
     [x] Basic purchase mechanism
     [x] Payment provider simulator
-    [ ] Purchasing notifications
+    [x] Purchasing notifications
     [ ] Documentation/PoC analysis
 
 ## Installing the project
