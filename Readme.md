@@ -69,26 +69,6 @@ Endpoints use `FastAPI`, `CouchDB` is used as a database and `pytest` as unit te
 
 Further details will be available in a future article that will be referenced here, documenting the project and analyzing the results of the proof of concept (PoC).
 
-## Work in progress
-
-This is a **work in progress**.
-
-Only part of the code was implemented, but what's implemented is functional.
-
-There are unit tests for all code that is implemented (of course 🙂).
-
-Below there are the main parts of the project with indication of what has been implemented or not:
-
-    [x] Sign in
-    [x] Login
-    [x] Email confirmation
-    [x] Recipes importing
-    [x] Basic platform operation
-    [x] Basic purchase mechanism
-    [x] Payment provider simulator
-    [x] Purchasing notifications
-    [ ] Documentation/PoC analysis
-
 ## Installing the project
 
 ### Installing docker
@@ -221,7 +201,9 @@ There are also intentional decisions that make the core of the PoC and are thing
 
 ## Results of the PoC
 
-Results of the PoC will be available on a future document to be referenced here (this is a work in progress at the moment).
+An analysis of the strengths, weaknesses and challenges of this proposition can be found here:
+
+https://www.linkedin.com/pulse/event-driven-service-oriented-monolith-poc-armando-baratti-s6ztf
 
 ## License
 
