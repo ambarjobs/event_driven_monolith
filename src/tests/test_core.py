@@ -67,7 +67,10 @@ class TestCore:
     #   `start_consumers()` function
     # ----------------------------------------------------------------------------------------------
     def test_start_consumers__general_case(self) -> None:
-        test_subscription = ps.Subscription(topic_name='test_topic', consumer_service_name='email_confirmation')
+        test_subscription = ps.Subscription(
+            topic_name='test_topic',
+            consumer_service_name='email_confirmation'
+        )
         subscriptions = (test_subscription,)
 
         with mock.patch(target='threading.Thread') as mock_thread:
@@ -97,7 +100,10 @@ class TestCore:
 
     @pytest.mark.filterwarnings('ignore::pytest.PytestUnhandledThreadExceptionWarning')
     def test_start_consumers__inexistent_consumer_service(self) -> None:
-        test_subscription = ps.Subscription(topic_name='test_topic', consumer_service_name='inexistent')
+        test_subscription = ps.Subscription(
+            topic_name='test_topic',
+            consumer_service_name='inexistent'
+        )
         subscriptions = (test_subscription,)
 
         with pytest.raises(ConsumerServiceNotFoundError):

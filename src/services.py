@@ -293,8 +293,9 @@ def check_email_confirmation(token: str) -> sch.OutputStatus:
         try:
             token_payload = utils.get_token_payload(token=token)
         except ExpiredSignatureError:
-            # It's not possible to get user_info from token payload because it's expired (exception).
-            # TODO: Maybe by passing `id` and `name` in addition to token to `confirm_email` endpoint.
+            # It's not possible to get user_info from token payload because it's expired(exception).
+            # TODO: Maybe by passing `id` and `name` in addition to token to `confirm_email`
+            #       endpoint.
             #       This would duplicate information inside the token (maybe there is a better
             #       solution).
 
@@ -349,11 +350,17 @@ def check_email_confirmation(token: str) -> sch.OutputStatus:
 
         email_confirmed_producer = ps.PubSub()
         try:
-            email_confirmed_producer.publish(topic='email-confirmed', message=email_confirmation_info.user_id)
+            email_confirmed_producer.publish(
+                topic='email-confirmed',
+                message=email_confirmation_info.user_id
+            )
         except MessagePublishingConfirmationError as err:
             log.error(str(err))
         output_status = ost.confirmed_status()
-        output_status.details.data = {'email': email_confirmation_info.user_id, 'name': email_confirmation_info.user_name}
+        output_status.details.data = {
+            'email': email_confirmation_info.user_id,
+            'name': email_confirmation_info.user_name
+        }
         return output_status
     except httpx.HTTPStatusError as err:
         return ost.http_error_status(error=err)
@@ -674,7 +681,8 @@ def payment_processing(checkout_id: str, recipe_id: str) -> sch.OutputStatus:
     return ost.payment_processing_status()
 
 def trigger_payment_processing(checkout_id: str, recipe_id: str) -> sch.OutputStatus:
-    """Triggering `payment_processing` in a different thread to release `create_checkout` endpoint."""
+    """Triggering `payment_processing` in a different thread to release `create_checkout`
+    endpoint."""
     try:
         services_executor.submit(payment_processing, checkout_id=checkout_id, recipe_id=recipe_id)
     except BrokenExecutor as err:

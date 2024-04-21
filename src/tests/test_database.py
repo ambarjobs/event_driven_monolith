@@ -1040,7 +1040,11 @@ class TestDatabase:
         )
 
         with pytest.raises(httpx.HTTPStatusError) as excinfo:
-            with mock.patch.object(target=db, attribute='app_credentials', new=invalid_db_credentials):
+            with mock.patch.object(
+                target=db,
+                attribute='app_credentials',
+                new=invalid_db_credentials
+            ):
                 # db.app_credentials = invalid_db_credentials
                 db.upsert_document(
                     database_name=database_name,

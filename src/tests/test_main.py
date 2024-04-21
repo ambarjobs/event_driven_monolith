@@ -934,7 +934,11 @@ class TestRecipesApi:
         payload = {'sub': admin_credentials.id}
         token = utils.create_token(payload=payload)
 
-        with mock.patch.object(target=srv.db, attribute='app_credentials', new=invalid_db_credentials):
+        with mock.patch.object(
+            target=srv.db,
+            attribute='app_credentials',
+            new=invalid_db_credentials
+        ):
             response = client.post(
                 url='/load-recipes',
                 files={'recipes_csv': recipe_csv_file},
@@ -989,7 +993,9 @@ class TestRecipesApi:
         self.requested_user_recipe.status = sch.RecipeStatus.REQUESTED
 
         self.user_recipes = (self.purchased_user_recipe, self.requested_user_recipe)
-        self.user_recipes_mapping = {recipe.id: recipe.to_json(exclude={'price', 'recipe'}) for recipe in self.user_recipes}
+        self.user_recipes_mapping = {
+            recipe.id: recipe.to_json(exclude={'price', 'recipe'}) for recipe in self.user_recipes
+        }
 
         user_recipes_data = {
             'recipes': [
@@ -1616,7 +1622,9 @@ class TestPurchasingApi:
             target='services.update_payment_status',
             autospec=True
         ) as mock_update_payment_status:
-            mock_update_payment_status.return_value = ost.update_payment_status_checkout_not_found_status()
+            mock_update_payment_status.return_value = (
+                ost.update_payment_status_checkout_not_found_status()
+            )
 
             body = {
                 'recipe_id': recipe.id,
@@ -1874,4 +1882,8 @@ class TestPurchaseEventsHandlingApi:
 
                 assert data['status'] == 'invalid_token'
                 assert data['error'] is True
-                assert utils.deep_traversal(data, 'details', 'description') == 'Invalid token: Signature verification failed.'
+                assert utils.deep_traversal(
+                    data,
+                    'details',
+                    'description'
+                ) == 'Invalid token: Signature verification failed.'
