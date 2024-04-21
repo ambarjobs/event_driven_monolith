@@ -10,7 +10,7 @@ from fastapi import status
 
 import config
 import utils
-from database import DatabaseInfo, DbCredentials, Index, db
+from database import DatabaseInfo, db, DbCredentials, Index
 from exceptions import InvalidCouchDBCredentialError
 from tests.helpers import access_database, Db
 

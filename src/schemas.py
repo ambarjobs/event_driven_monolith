@@ -7,21 +7,12 @@ from enum import IntEnum, StrEnum
 from typing import Annotated, Any, Self
 
 from fastapi.encoders import jsonable_encoder
-from pydantic import (
-    AwareDatetime,
-    BaseModel,
-    computed_field,
-    EmailStr,
-    Field,
-    JsonValue,
-    SecretStr,
-)
-from pydantic_extra_types.payment import PaymentCardNumber
+from pydantic import AwareDatetime, BaseModel, computed_field, EmailStr, Field, JsonValue, SecretStr
 from pydantic.functional_validators import AfterValidator
+from pydantic_extra_types.payment import PaymentCardNumber
 
 import config
 import utils
-
 
 # --------------------------------------------------------------------------------------------------
 #   Fields limits

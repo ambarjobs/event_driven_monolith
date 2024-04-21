@@ -13,11 +13,16 @@ filterwarnings = [
 [tool.pyright]
 reportGeneralTypeIssues = "none"
 
+[tool.isort]
+line_length = 100
+order_by_type = false
+multi_line_output=3
+
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F"]
 
 [tool.ruff.format]
 quote-style = "single"

@@ -17,13 +17,12 @@ from sse_starlette.sse import ServerSentEvent
 
 import config
 import output_status as ost
-import services as srv
 import schemas as sch
+import services as srv
 import utils
 from database import DbCredentials
 from main import app
 from tests.helpers import Db
-
 
 client = TestClient(app=app)
 

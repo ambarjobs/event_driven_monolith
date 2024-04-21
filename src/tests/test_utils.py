@@ -13,6 +13,7 @@ import config
 import utils
 from exceptions import InvalidAccessTokenKeyError
 
+
 class TestUtils:
     # ----------------------------------------------------------------------------------------------
     #   clear_nulls() function

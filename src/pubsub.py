@@ -1,8 +1,8 @@
 # ==================================================================================================
 #  Application Pub / Sub services
 # ==================================================================================================
-from dataclasses import dataclass
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import NamedTuple
 
 import pika
@@ -11,14 +11,13 @@ from pika.exceptions import (
     AMQPChannelError,
     AMQPConnectionError,
     ConnectionClosedByBroker,
-    UnroutableError,
+    UnroutableError
 )
 from pika.spec import Basic, BasicProperties
 
 import config
 from config import logging as log
 from exceptions import MessagePublishingConfirmationError
-
 
 ConsumerCallback = Callable[[BlockingChannel, Basic.Deliver, BasicProperties, bytes], None]
 

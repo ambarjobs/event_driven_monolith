@@ -16,6 +16,7 @@ from database import DatabaseInfo, db, Index
 from exceptions import ConsumerServiceNotFoundError
 from tests.helpers import access_database, Db
 
+
 class TestCore:
     # ----------------------------------------------------------------------------------------------
     #   Initialization

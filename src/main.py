@@ -1,8 +1,8 @@
 # ==================================================================================================
 #  Application endpoints
 # ==================================================================================================
-from uuid import uuid4
 from typing import Annotated
+from uuid import uuid4
 
 from cryptography.fernet import InvalidToken
 from fastapi import Depends, FastAPI, Request, status, UploadFile
@@ -18,7 +18,6 @@ import schemas as sch
 import services as srv
 from config import logging as log
 from core import oauth2_scheme
-
 
 core.init_app_databases(core.APP_DATABASES_INFO)
 core.create_admin_user()

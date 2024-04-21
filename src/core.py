@@ -2,10 +2,10 @@
 #  Application core data structures and functions
 # ==================================================================================================
 import os
+import threading as thrd
 from collections.abc import Sequence
 
 import httpx
-import threading as thrd
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import SecretStr
 
@@ -16,7 +16,6 @@ import utils
 from config import logging as log
 from database import DatabaseInfo, db, Index
 from exceptions import ConsumerServiceNotFoundError, InvalidAppAdminCredentialsError
-
 
 # ==================================================================================================
 #   Data structures
