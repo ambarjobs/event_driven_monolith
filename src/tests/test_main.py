@@ -952,7 +952,7 @@ class TestRecipesApi:
             response_data,
             'details',
             'description'
-        ) == 'An error ocurred trying to load the recipes.'
+        ) == 'An error occurred trying to load the recipes.'
         assert list(
             utils.deep_traversal(response_data, 'details', 'data')
         ) == ['lemon-cake', 'baked-potatoes']
@@ -1100,7 +1100,7 @@ class TestRecipesApi:
             all_recipe_status,
             'details',
             'description'
-        ) == 'An error ocurred trying to get all recipes.'
+        ) == 'An error occurred trying to get all recipes.'
 
 
     def test_get_all_recipes_endpoint__invalid_token(
@@ -1339,7 +1339,7 @@ class TestRecipesApi:
             all_recipe_status,
             'details',
             'description'
-        ) == 'An error ocurred trying to get recipe details.'
+        ) == 'An error occurred trying to get recipe details.'
 
 
     def test_get_recipe_details__invalid_token(

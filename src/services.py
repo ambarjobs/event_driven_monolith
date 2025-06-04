@@ -298,7 +298,7 @@ def check_email_confirmation(token: str) -> sch.OutputStatus:
             #       This would duplicate information inside the token (maybe there is a better
             #       solution).
 
-            # # Resend emil confirmation email/notification
+            # # Resend email confirmation email/notification
             # email_confirmation(
             #     channel=None,
             #     method=None,
@@ -485,7 +485,7 @@ def store_recipe(recipe: sch.Recipe) -> sch.OutputStatus:
     except httpx.HTTPStatusError as err:
         error_status = ost.http_error_status(error=err)
         error_status.status = 'error_storing_recipe'
-        error_status.details.description = 'An error ocurred trying to store the recipe.'
+        error_status.details.description = 'An error occurred trying to store the recipe.'
         return error_status
 
 def get_all_recipes() -> sch.OutputStatus:

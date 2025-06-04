@@ -226,7 +226,7 @@ def error_retrieving_all_recipes_status() -> sch.OutputStatus:
         status='error_retrieving_all_recipes',
         error=True,
         details=sch.StatusDetails(
-            description='An error ocurred trying to retrieve all recipes.'
+            description='An error occurred trying to retrieve all recipes.'
         ),
     )
 
@@ -247,7 +247,7 @@ def error_retrieving_user_recipes_status() -> sch.OutputStatus:
         status='error_retrieving_user_recipes',
         error=True,
         details=sch.StatusDetails(
-            description='An error ocurred trying to retrieve user recipes.'
+            description='An error occurred trying to retrieve user recipes.'
         ),
     )
 
@@ -268,7 +268,7 @@ def error_retrieving_specific_recipe_status() -> sch.OutputStatus:
         status='error_retrieving_specific_recipe',
         error=True,
         details=sch.StatusDetails(
-            description='An error ocurred trying to retrieve specific recipe.'
+            description='An error occurred trying to retrieve specific recipe.'
         ),
     )
 
@@ -384,7 +384,7 @@ def api_error_loading_recipe_status() -> sch.OutputStatus:
         status='api_error_loading_recipes',
         error=True,
         details=sch.StatusDetails(
-            description='An error ocurred trying to load the recipes.'
+            description='An error occurred trying to load the recipes.'
         ),
     )
 
@@ -405,7 +405,7 @@ def api_error_getting_all_recipes_status() -> sch.OutputStatus:
         status='api_error_getting_all_recipes',
         error=True,
         details=sch.StatusDetails(
-            description='An error ocurred trying to get all recipes.'
+            description='An error occurred trying to get all recipes.'
         ),
     )
 
@@ -426,7 +426,7 @@ def api_error_getting_recipe_details_status() -> sch.OutputStatus:
         status='api_error_getting_recipe_details',
         error=True,
         details=sch.StatusDetails(
-            description='An error ocurred trying to get recipe details.'
+            description='An error occurred trying to get recipe details.'
         ),
     )
 

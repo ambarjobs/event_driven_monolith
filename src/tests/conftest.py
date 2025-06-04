@@ -285,7 +285,7 @@ def another_recipe_csv_data() -> dict[str, Any]:
         'price': '1.20',
         'tags': '',
         'ingredients': 'potatoes|milk|butter|spices',
-        'directions': 'Open the potatoes in halves.|Spread butter in each half.|Put on the owen.'
+        'directions': 'Open the potatoes in halves.|Spread butter in each half.|Put on the oven.'
     }
 
 

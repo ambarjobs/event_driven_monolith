@@ -941,7 +941,7 @@ class TestRecipesServices:
 
         assert store_status.status == 'error_storing_recipe'
         assert store_status.error is True
-        assert store_status.details.description == 'An error ocurred trying to store the recipe.'
+        assert store_status.details.description == 'An error occurred trying to store the recipe.'
         assert store_status.details.data['errors'] == {
             'error': 'unauthorized',
             'reason': 'Name or password is incorrect.'
@@ -1009,7 +1009,7 @@ class TestRecipesServices:
         assert all_recipes_status.error is True
         assert (
             all_recipes_status.details.description ==
-            'An error ocurred trying to retrieve all recipes.'
+            'An error occurred trying to retrieve all recipes.'
         )
         assert all_recipes_status.details.data['errors'] == {
             'error': 'unauthorized',
@@ -1090,7 +1090,7 @@ class TestRecipesServices:
         assert user_recipes_status.error is True
         assert (
             user_recipes_status.details.description ==
-            'An error ocurred trying to retrieve user recipes.'
+            'An error occurred trying to retrieve user recipes.'
         )
         assert user_recipes_status.details.data['errors'] == {
             'error': 'unauthorized',
@@ -1161,7 +1161,7 @@ class TestRecipesServices:
         assert specific_recipe_status.error is True
         assert (
             specific_recipe_status.details.description ==
-            'An error ocurred trying to retrieve specific recipe.'
+            'An error occurred trying to retrieve specific recipe.'
         )
         assert specific_recipe_status.details.data['errors'] == {
             'error': 'unauthorized',
@@ -1715,7 +1715,7 @@ class TestPurchaseEventsHandling:
                 user_id = recipe_purchase_info.user_id
                 assert user_id not in srv.notifications_manager.users_mapping
 
-                message = 'An error ocurred trying to retrieve all recipes.'
+                message = 'An error occurred trying to retrieve all recipes.'
                 assert message in caplog.text
 
     def test_send_purchase_notification__inexistent_recipe(
