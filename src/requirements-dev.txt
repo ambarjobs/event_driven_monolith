@@ -1,3 +1,2 @@
-bpython~=0.23
-mypy~=0.991
-pipdeptree~=2.3.3
+mypy==1.16.0
+pipdeptree==2.26.1
